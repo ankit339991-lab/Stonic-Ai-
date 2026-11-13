@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #030712;
+    color: #e2e8f0;
+    user-select: none;
+    font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Custom JARVIS holographic scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(3, 7, 18, 0.8);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 243, 255, 0.25);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 243, 255, 0.6);
+  }
+}
+
+/* Futuristic background grid */
+.cyber-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 243, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 243, 255, 0.04) 1px, transparent 1px);
+}
+
+/* Holographic glass card */
+.holo-panel {
+  background: rgba(8, 15, 36, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 243, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(0, 243, 255, 0.05);
+}
+
+.holo-panel-active {
+  border-color: rgba(0, 243, 255, 0.6);
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.2), inset 0 0 15px rgba(0, 243, 255, 0.1);
+}
+
+/* Neon glow text */
+.glow-text-cyan {
+  color: #00f3ff;
+  text-shadow: 0 0 10px rgba(0, 243, 255, 0.6), 0 0 20px rgba(0, 243, 255, 0.3);
+}
+
+.glow-text-blue {
+  color: #3b82f6;
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+}
+
+.glow-text-amber {
+  color: #ffb703;
+  text-shadow: 0 0 10px rgba(255, 183, 3, 0.6);
+}
+
+.glow-text-danger {
+  color: #ff3366;
+  text-shadow: 0 0 12px rgba(255, 51, 102, 0.7);
+}
+
+/* Scanning line overlay */
+.scanlines {
+  position: relative;
+}
+.scanlines::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 243, 255, 0.02) 50%);
+  background-size: 100% 4px;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+/* Titlebar drag region for frameless window */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}

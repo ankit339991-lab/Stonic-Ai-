@@ -1,0 +1,59 @@
+{
+  "name": "stonic-ai",
+  "version": "1.0.0",
+  "description": "STONIC AI - Futuristic JARVIS-Inspired Windows Desktop AI Assistant",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev:react": "vite",
+    "build:react": "vite build",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "dev:electron": "cross-env NODE_ENV=development electron .",
+    "dev": "concurrently -k \"npm run dev:react\" \"wait-on tcp:5173 && npm run build:electron && npm run dev:electron\"",
+    "build": "npm run build:react && npm run build:electron",
+    "dist": "npm run build && electron-builder --win nsis",
+    "dist:dir": "npm run build && electron-builder --dir"
+  },
+  "keywords": [
+    "jarvis",
+    "ai-assistant",
+    "electron",
+    "gemini",
+    "windows-automation",
+    "stonic-ai"
+  ],
+  "author": "STONIC AI Labs",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.7",
+    "lucide-react": "^1.16.0",
+    "mammoth": "^1.9.0",
+    "mermaid": "^11.4.1",
+    "pdf-parse": "^1.1.1",
+    "playwright": "^1.50.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sql.js": "^1.12.0",
+    "tailwind-merge": "^3.0.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/sql.js": "^1.4.9",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "wait-on": "^8.0.2"
+  }
+}
