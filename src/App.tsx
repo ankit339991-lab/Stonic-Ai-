@@ -82,15 +82,109 @@ export const App: React.FC = () => {
       const lower = text.toLowerCase().trim();
 
       try {
-        // 1. Direct Laptop App Launchers
-        if (lower.startsWith('open ') || lower.startsWith('launch ')) {
-          const appTarget = lower.replace(/^(open|launch)\s+/, '').trim();
-          const res = await window.electronAPI.openApp(appTarget);
+        // 1. YouTube Direct Video / Song Playback
+        // Matches: "play kesariya on youtube", "youtube pe kesariya chalao", "play song shape of you", "youtube par arijit singh ke gaane lagao"
+        const isYouTubePlay =
+          (lower.includes('youtube') && (lower.includes('play') || lower.includes('chalao') || lower.includes('lagao') || lower.includes('sunao') || lower.includes('bajao') || lower.includes('video'))) ||
+          (lower.startsWith('play ') && !lower.includes('game'));
 
-          let reply = res.message;
-          if (res.success) {
-            reply = `Opening ${appTarget} for you, Sir.`;
+        if (isYouTubePlay) {
+          let ytQuery = text
+            .replace(/^(play\s+song|play\s+video|play|chalao|lagao|sunao|bajao)\s+/i, '')
+            .replace(/\s+(on\s+youtube|youtube\s+pe|youtube\s+par|in\s+youtube)$/i, '')
+            .replace(/^(youtube\s+pe|youtube\s+par|youtube\s+me|youtube)\s+/i, '')
+            .replace(/\s+(chalao|play\s+karo|lagao|sunao|bajao|kholo|play)$/i, '')
+            .trim();
+
+          if (!ytQuery) ytQuery = 'trending songs';
+
+          const res = await window.electronAPI.playYouTube(ytQuery);
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
+          setIsThinking(false);
+          return;
+        }
+
+        // 2. WhatsApp Direct Message Automation
+        // Matches: "whatsapp pe 9876543210 ko hello bhejo", "whatsapp pe papa ko mai ghar aa raha hu bhejo", "send hello to rahul on whatsapp"
+        const isWhatsApp =
+          lower.includes('whatsapp') || lower.includes('व्हाट्सएप');
+
+        if (isWhatsApp && (lower.includes('bhejo') || lower.includes('send') || lower.includes('message') || lower.includes('msg') || lower.includes('likho') || lower.includes('ko'))) {
+          // Extract recipient and message
+          let recipient = '';
+          let messageBody = '';
+
+          // Pattern: "whatsapp pe [recipient] ko [message] bhejo"
+          const matchKo = text.match(/(?:whatsapp\s+(?:pe|par|me)?\s*)?(.+?)\s+ko\s+(.+?)(?:\s+(?:bhejo|send\s+karo|likho))?$/i);
+          // Pattern: "send [message] to [recipient] on whatsapp"
+          const matchSendTo = text.match(/send\s+(.+?)\s+to\s+(.+?)(?:\s+on\s+whatsapp)?$/i);
+
+          if (matchKo && matchKo[1] && matchKo[2]) {
+            recipient = matchKo[1].replace(/^(whatsapp\s+(?:pe|par|me)?\s*)/i, '').trim();
+            messageBody = matchKo[2].replace(/\s+(?:bhejo|send\s+karo)$/i, '').trim();
+          } else if (matchSendTo && matchSendTo[1] && matchSendTo[2]) {
+            messageBody = matchSendTo[1].trim();
+            recipient = matchSendTo[2].trim();
+          } else {
+            // General fallback: anything after "whatsapp"
+            recipient = 'Friend';
+            messageBody = text.replace(/^(whatsapp\s+(?:pe|par|me)?\s*(?:message\s*)?(?:bhejo|send)?)/i, '').trim() || 'Hello';
           }
+
+          const res = await window.electronAPI.sendWhatsApp(recipient, messageBody);
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
+          setIsThinking(false);
+          return;
+        }
+
+        // 3. Google Chrome Direct Search
+        // Matches: "google pe ai news search karo", "search weather in delhi on google", "google search latest tech news", "chrome me cricket score search karo"
+        const isGoogleSearch =
+          (lower.includes('google') && (lower.includes('search') || lower.includes('dhoondho') || lower.includes('pe') || lower.includes('par'))) ||
+          (lower.startsWith('search ') && (lower.includes('google') || lower.includes('web')));
+
+        if (isGoogleSearch) {
+          const gQuery = text
+            .replace(/^(google\s*search\s*|search\s+on\s+google\s+for\s*|search\s+google\s+for\s*|search\s*)/i, '')
+            .replace(/^(google\s*(?:pe|par|me)?\s*)/i, '')
+            .replace(/\s+(search\s*karo|dhoondho|karo|batao)$/i, '')
+            .trim();
+
+          const res = await window.electronAPI.searchGoogle(gQuery || 'Google');
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
+          setIsThinking(false);
+          return;
+        }
+
+        // 4. Open ANY Installed Application on Laptop
+        // Matches: "open capcut", "cursor kholo", "vlc player open karo", "brave kholo", "open notepad", "word open karo", "calculator kholo"
+        const isAppLaunch =
+          lower.startsWith('open ') ||
+          lower.startsWith('launch ') ||
+          lower.startsWith('start ') ||
+          lower.includes('kholo') ||
+          lower.includes('खोलो') ||
+          lower.includes('open karo') ||
+          lower.includes('ओपन करो') ||
+          lower.includes('chalu karo') ||
+          lower.includes('चालू करो') ||
+          lower.includes('chalao') ||
+          lower.includes('चलाओ');
+
+        if (isAppLaunch) {
+          const appTarget = text
+            .replace(/^(open|launch|start|chalu\s+karo)\s+/i, '')
+            .replace(/\s+(kholo|खोलो|open\s+karo|ओपन\s+करो|chalu\s+karo|चालू\s+करो|chalao|चलाओ|karo|करो)$/i, '')
+            .replace(/^(कृपया|please)\s+/i, '')
+            .trim();
+
+          const res = await window.electronAPI.openApp(appTarget);
+          let reply = res.success
+            ? (res.matchedApp ? `'${res.matchedApp}' आपके लिए ओपन कर दिया है, सर।` : res.message)
+            : res.message;
 
           addAssistantMessage(reply);
           await voice.speak(reply);
@@ -98,21 +192,51 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 2. Volume Controls
-        if (lower.includes('volume') || lower.includes('mute') || lower.includes('sound')) {
-          if (lower.includes('up') || lower.includes('increase') || lower.includes('louder')) {
+        // 2. Volume Controls (English & Hindi: "आवाज़ बढ़ाओ", "वॉल्यूम कम करो", "म्यूट करो")
+        if (
+          lower.includes('volume') ||
+          lower.includes('mute') ||
+          lower.includes('sound') ||
+          lower.includes('awaz') ||
+          lower.includes('aawaz') ||
+          lower.includes('आवाज़') ||
+          lower.includes('वॉल्यूम') ||
+          lower.includes('म्यूट')
+        ) {
+          if (
+            lower.includes('up') ||
+            lower.includes('increase') ||
+            lower.includes('louder') ||
+            lower.includes('badhao') ||
+            lower.includes('बढ़ाओ') ||
+            lower.includes('tez')
+          ) {
             await window.electronAPI.adjustVolume('up', 8);
-            const reply = 'Increasing volume, Sir.';
+            const reply = 'आवाज़ बढ़ा दी गई है, सर।';
             addAssistantMessage(reply);
             await voice.speak(reply);
-          } else if (lower.includes('down') || lower.includes('decrease') || lower.includes('lower')) {
+          } else if (
+            lower.includes('down') ||
+            lower.includes('decrease') ||
+            lower.includes('lower') ||
+            lower.includes('kam') ||
+            lower.includes('कम') ||
+            lower.includes('dheemi')
+          ) {
             await window.electronAPI.adjustVolume('down', 8);
-            const reply = 'Decreasing volume, Sir.';
+            const reply = 'आवाज़ कम कर दी गई है, सर।';
             addAssistantMessage(reply);
             await voice.speak(reply);
-          } else if (lower.includes('mute') || lower.includes('unmute')) {
+          } else if (
+            lower.includes('mute') ||
+            lower.includes('unmute') ||
+            lower.includes('म्यूट') ||
+            lower.includes('chup') ||
+            lower.includes('band') ||
+            lower.includes('बंद')
+          ) {
             await window.electronAPI.adjustVolume('mute');
-            const reply = 'Toggling audio mute status, Sir.';
+            const reply = 'ऑडियो म्यूट / अनम्यूट टॉगल कर दिया गया है, सर।';
             addAssistantMessage(reply);
             await voice.speak(reply);
           }
@@ -120,46 +244,70 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 3. Battery Status
-        if (lower.includes('battery') || lower.includes('charge') || lower.includes('power')) {
+        // 3. Battery Status (English & Hindi: "बैटरी कितनी है", "चार्जिंग चेक करो")
+        if (
+          lower.includes('battery') ||
+          lower.includes('charge') ||
+          lower.includes('power') ||
+          lower.includes('बैटरी') ||
+          lower.includes('चार्ज')
+        ) {
           const battery = await window.electronAPI.getBattery();
           const reply = battery.success
-            ? `Laptop battery is currently at ${battery.percent}%, and is ${battery.status}.`
-            : 'Unable to query battery telemetry, Sir.';
+            ? `लैपटॉप की बैटरी अभी ${battery.percent}% है और ${battery.status === 'Charging' ? 'चार्ज हो रही है' : 'बैटरी पावर पर चल रही है'}, सर।`
+            : 'बैटरी टेलीमेट्री प्राप्त नहीं हो सकी, सर।';
           addAssistantMessage(reply);
           await voice.speak(reply);
           setIsThinking(false);
           return;
         }
 
-        // 4. Storage Info
-        if (lower.includes('storage') || lower.includes('hard drive') || lower.includes('disk space')) {
+        // 4. Storage Info (English & Hindi: "स्टोरेज दिखाओ", "स्पेस कितना है")
+        if (
+          lower.includes('storage') ||
+          lower.includes('hard drive') ||
+          lower.includes('disk') ||
+          lower.includes('स्टोरेज') ||
+          lower.includes('मेमोरी') ||
+          lower.includes('space') ||
+          lower.includes('स्पेस')
+        ) {
           const storage = await window.electronAPI.getStorage();
           const primary = storage[0];
           const reply = primary
-            ? `Primary drive ${primary.drive} has ${primary.free_gb} GB free out of ${primary.total_gb} GB (${primary.percent_used}% utilized).`
-            : 'No storage partition telemetry available, Sir.';
+            ? `प्राइमरी ड्राइव ${primary.drive} में ${primary.free_gb} GB स्पेस खाली है (कुल ${primary.total_gb} GB में से), सर।`
+            : 'स्टोरेज पार्टीशन की जानकारी उपलब्ध नहीं है, सर।';
           addAssistantMessage(reply);
           await voice.speak(reply);
           setIsThinking(false);
           return;
         }
 
-        // 5. Screenshot
-        if (lower.includes('screenshot') || lower.includes('capture screen') || lower.includes('snip')) {
+        // 5. Screenshot (English & Hindi: "स्क्रीनशॉट लो", "फोटो खींचो")
+        if (
+          lower.includes('screenshot') ||
+          lower.includes('capture') ||
+          lower.includes('snip') ||
+          lower.includes('स्क्रीनशॉट') ||
+          lower.includes('स्क्रीन शॉट')
+        ) {
           const res = await window.electronAPI.takeScreenshot();
           const reply = res.success
-            ? `Desktop screenshot captured successfully and saved to ${res.path}.`
-            : `Failed to capture screenshot: ${res.error}`;
+            ? `डेस्कटॉप का स्क्रीनशॉट ले लिया गया है और सुरक्षित सेव कर दिया है, सर।`
+            : `स्क्रीनशॉट लेने में त्रुटि आई: ${res.error}`;
           addAssistantMessage(reply);
           await voice.speak(reply);
           setIsThinking(false);
           return;
         }
 
-        // 6. Lock Laptop
-        if (lower.includes('lock laptop') || lower.includes('lock screen') || lower.includes('lock my laptop')) {
-          const reply = 'Locking your workstation now, Sir.';
+        // 6. Lock Laptop (English & Hindi: "लैपटॉप लॉक करो", "स्क्रीन लॉक करो")
+        if (
+          lower.includes('lock') ||
+          lower.includes('लॉक') ||
+          lower.includes('workstation')
+        ) {
+          const reply = 'आपका वर्कस्टेशन तुरंत लॉक किया जा रहा है, सर।';
           addAssistantMessage(reply);
           await voice.speak(reply);
           await window.electronAPI.lockLaptop();
@@ -248,3 +396,4 @@ export const App: React.FC = () => {
     </div>
   );
 };
+

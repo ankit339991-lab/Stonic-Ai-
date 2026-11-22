@@ -14,7 +14,7 @@ import {
 
 export const SettingsPanel: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gemini-2.0-flash');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-lite');
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [wakeWord, setWakeWord] = useState('Hey Jarvis');
   const [listenWhenMinimized, setListenWhenMinimized] = useState(false);
@@ -75,7 +75,7 @@ export const SettingsPanel: React.FC = () => {
     setTestStatus(null);
 
     try {
-      const res = await window.electronAPI.testApiKey(apiKey.trim());
+      const res = await window.electronAPI.testApiKey(apiKey.trim(), selectedModel);
       setTestStatus({ message: res.message, isError: !res.success });
     } catch (e: any) {
       setTestStatus({ message: `Test failed: ${e.message}`, isError: true });
@@ -88,8 +88,9 @@ export const SettingsPanel: React.FC = () => {
     if (!('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
     const utt = new SpeechSynthesisUtterance(
-      'Diagnostics online, Sir. STONIC AI speech synthesis is operating at peak efficiency.'
+      'डायग्नोस्टिक्स ऑनलाइन, सर। स्टोनिक एआई स्पीच सिंथेसिस पूरी क्षमता से कार्य कर रहा है।'
     );
+    utt.lang = 'hi-IN';
     if (selectedVoiceURI) {
       const match = voices.find((v) => v.voiceURI === selectedVoiceURI);
       if (match) utt.voice = match;
@@ -204,9 +205,11 @@ export const SettingsPanel: React.FC = () => {
               onChange={(e) => setSelectedModel(e.target.value)}
               className="w-full bg-[#060e22] border border-cyan-500/30 focus:border-cyan-400 rounded-lg p-2 text-xs text-slate-100 font-mono focus:outline-none"
             >
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fastest & Ultra-Intelligent)</option>
-              <option value="gemini-1.5-flash">Gemini 1.5 Flash (Lightweight & High Speed)</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning & Multimodal)</option>
+              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (Recommended - Ultra Fast & Reliable)</option>
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash (Advanced Intelligence)</option>
+              <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (Balanced Speed)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
             </select>
           </div>
         </div>
@@ -376,3 +379,4 @@ export const SettingsPanel: React.FC = () => {
     </div>
   );
 };
+

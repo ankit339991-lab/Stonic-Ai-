@@ -138,3 +138,4 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     </header>
   );
 };
+

@@ -3,6 +3,8 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import https from 'https';
+import http from 'http';
 import { shell, app } from 'electron';
 
 const execAsync = promisify(exec);
@@ -42,8 +44,15 @@ export interface FileItem {
   modifiedAt: string;
 }
 
+export interface InstalledApp {
+  name: string;
+  appId: string;
+}
+
 export class SystemService {
   private pythonHelperPath: string;
+  private cachedApps: InstalledApp[] = [];
+  private lastAppScanTime: number = 0;
 
   constructor() {
     this.pythonHelperPath = path.join(__dirname, '..', 'python', 'system_helper.py');
@@ -51,6 +60,9 @@ export class SystemService {
     if (!fs.existsSync(this.pythonHelperPath)) {
       this.pythonHelperPath = path.join(process.cwd(), 'electron', 'python', 'system_helper.py');
     }
+
+    // Pre-cache installed apps in background on startup
+    this.getInstalledApps().catch(() => {});
   }
 
   /**
@@ -89,60 +101,403 @@ export class SystemService {
   }
 
   /**
-   * Open allowlisted applications and URLs
+   * Get all installed applications on the Windows laptop dynamically
    */
-  async openApp(appName: string): Promise<{ success: boolean; message: string }> {
-    const lower = appName.toLowerCase().trim();
+  async getInstalledApps(forceRefresh = false): Promise<InstalledApp[]> {
+    const now = Date.now();
+    // Cache for 10 minutes unless forced
+    if (!forceRefresh && this.cachedApps.length > 0 && now - this.lastAppScanTime < 600000) {
+      return this.cachedApps;
+    }
 
     try {
-      if (lower.includes('chrome')) {
+      const psCommand = `powershell -NoProfile -Command "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress"`;
+      const { stdout } = await execAsync(psCommand, { maxBuffer: 10 * 1024 * 1024 });
+
+      if (stdout.trim()) {
+        const parsed = JSON.parse(stdout.trim());
+        const rawApps: any[] = Array.isArray(parsed) ? parsed : [parsed];
+
+        // Built-in standard Windows applications fallback list
+        const builtIns: InstalledApp[] = [
+          { name: 'Google Chrome', appId: 'Chrome' },
+          { name: 'Notepad', appId: 'notepad.exe' },
+          { name: 'Calculator', appId: 'calc.exe' },
+          { name: 'Command Prompt', appId: 'cmd.exe' },
+          { name: 'PowerShell', appId: 'powershell.exe' },
+          { name: 'File Explorer', appId: 'explorer.exe' },
+          { name: 'Paint', appId: 'mspaint.exe' },
+          { name: 'Task Manager', appId: 'taskmgr.exe' },
+          { name: 'Windows Settings', appId: 'ms-settings:' },
+          { name: 'Control Panel', appId: 'control.exe' },
+          { name: 'Snipping Tool', appId: 'snippingtool.exe' },
+        ];
+
+        // Deduplicate by name
+        const map = new Map<string, InstalledApp>();
+        for (const app of builtIns) {
+          map.set(app.name.toLowerCase(), app);
+        }
+        for (const app of rawApps) {
+          if (app.Name && app.AppID) {
+            map.set(app.Name.toLowerCase(), { name: app.Name, appId: app.AppID });
+          }
+        }
+
+        this.cachedApps = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+        this.lastAppScanTime = now;
+        return this.cachedApps;
+      }
+    } catch (err: any) {
+      console.warn('Could not query Get-StartApps:', err.message);
+    }
+
+    // Return builtins if scan failed
+    return [
+      { name: 'Google Chrome', appId: 'Chrome' },
+      { name: 'Notepad', appId: 'notepad.exe' },
+      { name: 'Calculator', appId: 'calc.exe' },
+      { name: 'PowerShell', appId: 'powershell.exe' },
+      { name: 'File Explorer', appId: 'explorer.exe' },
+      { name: 'Windows Settings', appId: 'ms-settings:' },
+    ];
+  }
+
+  /**
+   * Open ANY application installed on the laptop dynamically
+   */
+  async openApp(appName: string): Promise<{ success: boolean; message: string; matchedApp?: string }> {
+    let clean = appName.toLowerCase().trim();
+
+    // Clean common prefixes and suffixes
+    clean = clean
+      .replace(/^(open|launch|start|kholo|chalu karo|chalao)\s+/, '')
+      .replace(/\s+(kholo|open karo|chalao|chalu karo|app|application)$/, '')
+      .trim();
+
+    if (!clean) {
+      return { success: false, message: 'Please specify an application name to open.' };
+    }
+
+    // Direct Web URL Check
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      await shell.openExternal(appName);
+      return { success: true, message: `Opened URL: ${appName}` };
+    }
+
+    // 1. Check if user asked for YouTube song/video or search
+    if (clean.includes('youtube')) {
+      const ytQuery = clean.replace(/^(youtube\s*(pe|par|me|in)?|play\s*on\s*youtube)/i, '').trim();
+      if (ytQuery) {
+        return await this.playYouTubeVideo(ytQuery);
+      }
+      await shell.openExternal('https://www.youtube.com');
+      return { success: true, message: 'YouTube opened in browser' };
+    }
+
+    // 2. Check if user asked for Google search
+    if (clean.startsWith('google ') || clean.includes('google search')) {
+      const gQuery = clean.replace(/^(google\s*search\s*|google\s*(pe|par|me)?\s*search\s*karo\s*|google\s*)/i, '').trim();
+      if (gQuery) {
+        return await this.searchGoogle(gQuery);
+      }
+      await execAsync('start chrome');
+      return { success: true, message: 'Google Chrome opened' };
+    }
+
+    // 3. Quick hardwired mappings for common Windows essentials
+    if (clean === 'chrome' || clean === 'google chrome') {
+      try {
         await execAsync('start chrome');
         return { success: true, message: 'Google Chrome opened' };
+      } catch {
+        await shell.openExternal('https://www.google.com');
+        return { success: true, message: 'Google opened' };
       }
-      if (lower.includes('youtube')) {
-        await shell.openExternal('https://www.youtube.com');
-        return { success: true, message: 'YouTube opened in browser' };
-      }
-      if (lower.includes('whatsapp')) {
-        // Try Windows Store URI scheme first, fallback to browser
+    }
+
+    if (clean === 'whatsapp' || clean === 'wa') {
+      try {
+        await execAsync('start whatsapp:');
+        return { success: true, message: 'WhatsApp Desktop launched' };
+      } catch {
         try {
-          await execAsync('start whatsapp:');
+          await execAsync(`powershell -NoProfile -Command "Start-Process 'explorer.exe' -ArgumentList 'shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App'"`);
           return { success: true, message: 'WhatsApp Desktop launched' };
         } catch {
           await shell.openExternal('https://web.whatsapp.com');
           return { success: true, message: 'WhatsApp Web opened in browser' };
         }
       }
-      if (lower.includes('notepad')) {
-        await execAsync('start notepad.exe');
-        return { success: true, message: 'Notepad opened' };
+    }
+
+    if (clean === 'notepad' || clean === 'note') {
+      await execAsync('start notepad.exe');
+      return { success: true, message: 'Notepad opened' };
+    }
+
+    if (clean === 'calculator' || clean === 'calc') {
+      await execAsync('start calc.exe');
+      return { success: true, message: 'Calculator opened' };
+    }
+
+    if (clean === 'explorer' || clean === 'file explorer' || clean === 'my computer' || clean === 'files') {
+      await execAsync('start explorer.exe');
+      return { success: true, message: 'File Explorer opened' };
+    }
+
+    if (clean === 'settings' || clean === 'windows settings') {
+      await execAsync('start ms-settings:');
+      return { success: true, message: 'Windows Settings opened' };
+    }
+
+    if (clean === 'cmd' || clean === 'terminal' || clean === 'powershell') {
+      await execAsync('start powershell.exe');
+      return { success: true, message: 'PowerShell terminal opened' };
+    }
+
+    if (clean === 'paint' || clean === 'mspaint') {
+      await execAsync('start mspaint.exe');
+      return { success: true, message: 'Paint opened' };
+    }
+
+    if (clean === 'task manager' || clean === 'taskmgr') {
+      await execAsync('start taskmgr.exe');
+      return { success: true, message: 'Task Manager opened' };
+    }
+
+    // 4. Dynamic search across all installed apps on this laptop
+    const apps = await this.getInstalledApps();
+
+    // Priority 1: Exact name match
+    let match = apps.find((a) => a.name.toLowerCase() === clean);
+
+    // Priority 2: Starts with match (e.g. "cursor" -> "Cursor", "capcut" -> "CapCut", "brave" -> "Brave")
+    if (!match) {
+      match = apps.find((a) => a.name.toLowerCase().startsWith(clean));
+    }
+
+    // Priority 3: Substring / includes match (e.g. "vlc" -> "VLC media player", "word" -> "Microsoft Word")
+    if (!match) {
+      match = apps.find((a) => a.name.toLowerCase().includes(clean));
+    }
+
+    // Priority 4: Word match (e.g. "media player" or "code")
+    if (!match) {
+      const words = clean.split(/\s+/).filter(Boolean);
+      match = apps.find((a) => {
+        const lowerName = a.name.toLowerCase();
+        return words.every((w) => lowerName.includes(w));
+      });
+    }
+
+    // If an installed app was matched, launch it via its AppID
+    if (match) {
+      try {
+        const appId = match.appId;
+
+        // If AppID is a web URL
+        if (appId.startsWith('http://') || appId.startsWith('https://')) {
+          await shell.openExternal(appId);
+          return { success: true, message: `Opened '${match.name}' in browser`, matchedApp: match.name };
+        }
+
+        // If AppID is a direct executable path
+        if (appId.includes('\\') && (appId.endsWith('.exe') || fs.existsSync(appId))) {
+          await execAsync(`start "" "${appId}"`);
+          return { success: true, message: `Opened '${match.name}' successfully`, matchedApp: match.name };
+        }
+
+        // Launch UWP or Windows Shell AppID via explorer shell:AppsFolder
+        await execAsync(`powershell -NoProfile -Command "Start-Process 'explorer.exe' -ArgumentList 'shell:AppsFolder\\${appId}'"`);
+        return { success: true, message: `Opened '${match.name}' successfully`, matchedApp: match.name };
+      } catch (err: any) {
+        // Fallback to direct start
+        try {
+          await execAsync(`cmd /c start "" "${clean}"`);
+          return { success: true, message: `Launched '${match.name}'`, matchedApp: match.name };
+        } catch (innerErr: any) {
+          return { success: false, message: `Failed to open ${match.name}: ${err.message}` };
+        }
       }
-      if (lower.includes('calculator') || lower.includes('calc')) {
-        await execAsync('start calc.exe');
-        return { success: true, message: 'Calculator opened' };
-      }
-      if (lower.includes('explorer') || lower.includes('file manager') || lower.includes('files')) {
-        await execAsync('start explorer.exe');
-        return { success: true, message: 'File Explorer opened' };
-      }
-      if (lower.includes('settings')) {
-        await execAsync('start ms-settings:');
-        return { success: true, message: 'Windows Settings opened' };
-      }
-      if (lower.includes('terminal') || lower.includes('powershell')) {
-        await execAsync('start powershell.exe');
-        return { success: true, message: 'PowerShell terminal opened' };
+    }
+
+    // 5. General Fallback: Try launching via Windows cmd start
+    try {
+      await execAsync(`cmd /c start "" "${clean}"`);
+      return { success: true, message: `Started '${clean}' via Windows system.` };
+    } catch {
+      return {
+        success: false,
+        message: `Application '${clean}' laptop par nahi mili. Aap installed apps list me check kar sakte hain.`,
+      };
+    }
+  }
+
+  /**
+   * Search and directly play a video or song on YouTube
+   */
+  async playYouTubeVideo(query: string): Promise<{ success: boolean; message: string; url: string; videoId?: string }> {
+    const cleanQuery = query.trim();
+    if (!cleanQuery) {
+      await shell.openExternal('https://www.youtube.com');
+      return { success: true, message: 'YouTube opened', url: 'https://www.youtube.com' };
+    }
+
+    try {
+      // Fetch YouTube search page in background to get first video ID
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQuery)}`;
+
+      const videoId = await new Promise<string | null>((resolve) => {
+        const req = https.get(
+          searchUrl,
+          {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+            timeout: 3500,
+          },
+          (res) => {
+            let body = '';
+            res.on('data', (chunk) => {
+              body += chunk;
+              // Check early if we already have a video match to avoid reading entire stream
+              const earlyMatch = body.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+              if (earlyMatch) {
+                req.destroy();
+                resolve(earlyMatch[1]);
+              }
+            });
+            res.on('end', () => {
+              const m = body.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/) || body.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+              resolve(m ? m[1] : null);
+            });
+          }
+        );
+
+        req.on('error', () => resolve(null));
+        req.on('timeout', () => {
+          req.destroy();
+          resolve(null);
+        });
+      });
+
+      if (videoId) {
+        const playUrl = `https://www.youtube.com/watch?v=${videoId}&autoplay=1`;
+        try {
+          await execAsync(`start chrome "${playUrl}"`);
+        } catch {
+          await shell.openExternal(playUrl);
+        }
+        return {
+          success: true,
+          message: `यूट्यूब पर "${cleanQuery}" प्ले किया जा रहा है!`,
+          url: playUrl,
+          videoId,
+        };
       }
 
-      // Check if it's a URL
-      if (lower.startsWith('http://') || lower.startsWith('https://')) {
-        await shell.openExternal(appName);
-        return { success: true, message: `Opened URL: ${appName}` };
+      // If videoId wasn't found quickly, open the direct search results on YouTube
+      try {
+        await execAsync(`start chrome "${searchUrl}"`);
+      } catch {
+        await shell.openExternal(searchUrl);
       }
+      return {
+        success: true,
+        message: `यूट्यूब पर "${cleanQuery}" सर्च करके ओपन कर दिया है!`,
+        url: searchUrl,
+      };
+    } catch (err: any) {
+      const fallbackUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQuery)}`;
+      await shell.openExternal(fallbackUrl);
+      return { success: true, message: `YouTube opened: ${fallbackUrl}`, url: fallbackUrl };
+    }
+  }
 
-      return { success: false, message: `Application '${appName}' is not in the allowlist.` };
-    } catch (error: any) {
-      return { success: false, message: `Error opening ${appName}: ${error.message}` };
+  /**
+   * Send WhatsApp message to contact or phone number
+   */
+  async sendWhatsAppMessage(recipientOrPhone: string, message: string): Promise<{ success: boolean; message: string }> {
+    const cleanMsg = message.trim();
+    const rawTarget = recipientOrPhone.trim();
+
+    // Check if recipient has phone number digits
+    const digitsOnly = rawTarget.replace(/\D/g, '');
+    let formattedPhone = '';
+
+    if (digitsOnly.length >= 10) {
+      if (digitsOnly.length === 10) {
+        formattedPhone = `91${digitsOnly}`; // Default Indian international code
+      } else {
+        formattedPhone = digitsOnly;
+      }
+    }
+
+    try {
+      if (formattedPhone) {
+        // Direct WhatsApp Desktop Protocol with phone & text
+        const deepLink = `whatsapp://send?phone=${formattedPhone}&text=${encodeURIComponent(cleanMsg)}`;
+        try {
+          await shell.openExternal(deepLink);
+          return {
+            success: true,
+            message: `व्हाट्सएप पर +${formattedPhone} के लिए चैट ओपन कर दी गई है और मैसेज लिख दिया गया है!`,
+          };
+        } catch {
+          const webUrl = `https://web.whatsapp.com/send?phone=${formattedPhone}&text=${encodeURIComponent(cleanMsg)}`;
+          await shell.openExternal(webUrl);
+          return {
+            success: true,
+            message: `व्हाट्सएप वेब पर +${formattedPhone} के लिए मैसेज ओपन कर दिया गया है!`,
+          };
+        }
+      } else {
+        // Recipient is a contact name (e.g. "Papa", "Rahul", "Office")
+        const deepLink = `whatsapp://send?text=${encodeURIComponent(cleanMsg)}`;
+        try {
+          await shell.openExternal(deepLink);
+          return {
+            success: true,
+            message: `व्हाट्सएप ओपन हो गया है। "${rawTarget}" को भेजने के लिए मैसेज तैयार है: "${cleanMsg}"`,
+          };
+        } catch {
+          const webUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(cleanMsg)}`;
+          await shell.openExternal(webUrl);
+          return {
+            success: true,
+            message: `व्हाट्सएप वेब ओपन हो गया है। "${rawTarget}" को मैसेज भेजने के लिए तैयार है।`,
+          };
+        }
+      }
+    } catch (err: any) {
+      return { success: false, message: `व्हाट्सएप खोलने में त्रुटि: ${err.message}` };
+    }
+  }
+
+  /**
+   * Open Google Chrome and directly search for user's query
+   */
+  async searchGoogle(query: string): Promise<{ success: boolean; message: string; url: string }> {
+    const cleanQuery = query.trim();
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(cleanQuery)}`;
+
+    try {
+      await execAsync(`start chrome "${searchUrl}"`);
+      return {
+        success: true,
+        message: `गूगल क्रोम में "${cleanQuery}" सर्च किया गया है!`,
+        url: searchUrl,
+      };
+    } catch {
+      await shell.openExternal(searchUrl);
+      return {
+        success: true,
+        message: `ब्राउज़र में गूगल सर्च "${cleanQuery}" ओपन कर दिया गया है!`,
+        url: searchUrl,
+      };
     }
   }
 
@@ -453,3 +808,4 @@ export class SystemService {
     }
   }
 }
+

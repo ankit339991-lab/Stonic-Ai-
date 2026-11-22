@@ -10,7 +10,11 @@ export const API = {
   getMetrics: () => ipcRenderer.invoke('system:getMetrics'),
   getBattery: () => ipcRenderer.invoke('system:getBattery'),
   getStorage: () => ipcRenderer.invoke('system:getStorage'),
+  getInstalledApps: (forceRefresh?: boolean) => ipcRenderer.invoke('system:getInstalledApps', forceRefresh),
   openApp: (appName: string) => ipcRenderer.invoke('system:openApp', appName),
+  playYouTube: (query: string) => ipcRenderer.invoke('system:playYouTube', query),
+  sendWhatsApp: (target: string, message: string) => ipcRenderer.invoke('system:sendWhatsApp', target, message),
+  searchGoogle: (query: string) => ipcRenderer.invoke('system:searchGoogle', query),
   adjustVolume: (action: 'up' | 'down' | 'mute' | 'unmute', amount?: number) =>
     ipcRenderer.invoke('system:adjustVolume', action, amount),
   takeScreenshot: () => ipcRenderer.invoke('system:takeScreenshot'),
@@ -51,7 +55,7 @@ export const API = {
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (updates: any) => ipcRenderer.invoke('settings:update', updates),
-  testApiKey: (apiKey: string) => ipcRenderer.invoke('gemini:testKey', apiKey),
+  testApiKey: (apiKey: string, model?: string) => ipcRenderer.invoke('gemini:testKey', apiKey, model),
 
   // AI & Chat & Vision
   chat: (messages: any[], systemInstruction?: string, model?: string) =>
@@ -89,3 +93,4 @@ export const API = {
 contextBridge.exposeInMainWorld('electronAPI', API);
 
 export type ElectronAPI = typeof API;
+

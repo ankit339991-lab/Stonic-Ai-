@@ -202,3 +202,4 @@ STONIC AI enforces strict safety protocols:
 3. **No Autonomous Financial or Private Actions**: The assistant will never perform financial transactions or transmit private data without approval.
 4. **Emergency Stop**: Press `Ctrl+Shift+Escape` or click the **STOP** button in the title bar at any time to instantly freeze and cancel all running agent operations.
 5. **Local Data Storage**: All memories, settings, and logs are kept strictly local on your laptop in SQLite and JSON files.
+

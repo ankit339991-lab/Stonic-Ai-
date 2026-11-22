@@ -38,12 +38,12 @@ export const ChatHUD: React.FC<ChatHUDProps> = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const quickActions = [
-    { label: 'Open Google Chrome', cmd: 'Open Google Chrome' },
-    { label: 'Check Battery', cmd: 'Tell me battery status' },
-    { label: 'Take Screenshot', cmd: 'Take a screenshot' },
-    { label: 'Show Storage', cmd: 'Show available storage' },
-    { label: 'Search AI News', cmd: 'Find the latest AI news and summarize' },
-    { label: 'Lock Laptop', cmd: 'Lock my laptop' },
+    { label: 'क्रोम खोलो', cmd: 'गूगल क्रोम खोलो' },
+    { label: 'बैटरी चेक', cmd: 'लैपटॉप की बैटरी कितनी है?' },
+    { label: 'स्क्रीनशॉट लो', cmd: 'स्क्रीनशॉट लो' },
+    { label: 'स्टोरेज दिखाओ', cmd: 'स्टोरेज स्पेस कितना है?' },
+    { label: 'एआई न्यूज़ रिपोर्ट', cmd: 'ताज़ा AI न्यूज़ खोजकर हिंदी में संक्षिप्त रिपोर्ट तैयार करो' },
+    { label: 'लैपटॉप लॉक', cmd: 'लैपटॉप लॉक करो' },
   ];
 
   useEffect(() => {
@@ -252,7 +252,7 @@ export const ChatHUD: React.FC<ChatHUDProps> = ({
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type a command or say 'Hey Jarvis'..."
+            placeholder="हिंदी में निर्देश लिखें या 'Hey Jarvis' बोलें..."
             disabled={isThinking}
             className="flex-1 bg-[#070e22] border border-cyan-500/30 focus:border-cyan-400 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-cyan-500/40 focus:outline-none focus:ring-1 focus:ring-cyan-400/50 transition-all font-sans"
           />
@@ -271,3 +271,4 @@ export const ChatHUD: React.FC<ChatHUDProps> = ({
     </div>
   );
 };
+

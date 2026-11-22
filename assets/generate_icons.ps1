@@ -41,3 +41,4 @@ $fileStream.Close()
 $g.Dispose()
 $bmp.Dispose()
 Write-Output "Icons generated successfully in assets/"
+

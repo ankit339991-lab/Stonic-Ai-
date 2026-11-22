@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Laptop,
   Volume2,
@@ -20,6 +20,10 @@ import {
   Settings as SettingsIcon,
   Check,
   AlertTriangle,
+  Play,
+  Send,
+  RefreshCw,
+  AppWindow,
 } from 'lucide-react';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { ConfirmModal } from '../common/ConfirmModal';
@@ -34,6 +38,36 @@ export const LaptopDashboard: React.FC = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [showLockConfirm, setShowLockConfirm] = useState(false);
 
+  // Advanced Laptop Control States
+  const [ytQuery, setYtQuery] = useState('');
+  const [isYtPlaying, setIsYtPlaying] = useState(false);
+  const [waTarget, setWaTarget] = useState('');
+  const [waMessage, setWaMessage] = useState('');
+  const [isWaSending, setIsWaSending] = useState(false);
+  const [chromeSearchQuery, setChromeSearchQuery] = useState('');
+  const [isChromeSearching, setIsChromeSearching] = useState(false);
+
+  // Installed Apps State
+  const [installedApps, setInstalledApps] = useState<Array<{ name: string; appId: string }>>([]);
+  const [appFilter, setAppFilter] = useState('');
+  const [isLoadingApps, setIsLoadingApps] = useState(false);
+
+  useEffect(() => {
+    loadInstalledApps();
+  }, []);
+
+  const loadInstalledApps = async (force = false) => {
+    setIsLoadingApps(true);
+    try {
+      const apps = await window.electronAPI.getInstalledApps(force);
+      setInstalledApps(apps || []);
+    } catch (e: any) {
+      console.warn('Could not load installed apps:', e.message);
+    } finally {
+      setIsLoadingApps(false);
+    }
+  };
+
   const showFeedback = (text: string, isError = false) => {
     setFeedbackMsg({ text, isError });
     setTimeout(() => setFeedbackMsg(null), 4000);
@@ -45,6 +79,51 @@ export const LaptopDashboard: React.FC = () => {
       showFeedback(res.message, !res.success);
     } catch (e: any) {
       showFeedback(`Failed to open ${appName}: ${e.message}`, true);
+    }
+  };
+
+  const handlePlayYouTube = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!ytQuery.trim()) return;
+    setIsYtPlaying(true);
+    try {
+      const res = await window.electronAPI.playYouTube(ytQuery.trim());
+      showFeedback(res.message, !res.success);
+      setYtQuery('');
+    } catch (e: any) {
+      showFeedback(`YouTube error: ${e.message}`, true);
+    } finally {
+      setIsYtPlaying(false);
+    }
+  };
+
+  const handleSendWhatsApp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!waMessage.trim()) return;
+    setIsWaSending(true);
+    try {
+      const res = await window.electronAPI.sendWhatsApp(waTarget.trim() || 'Contact', waMessage.trim());
+      showFeedback(res.message, !res.success);
+      setWaMessage('');
+    } catch (e: any) {
+      showFeedback(`WhatsApp error: ${e.message}`, true);
+    } finally {
+      setIsWaSending(false);
+    }
+  };
+
+  const handleSearchChrome = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!chromeSearchQuery.trim()) return;
+    setIsChromeSearching(true);
+    try {
+      const res = await window.electronAPI.searchGoogle(chromeSearchQuery.trim());
+      showFeedback(res.message, !res.success);
+      setChromeSearchQuery('');
+    } catch (e: any) {
+      showFeedback(`Chrome search error: ${e.message}`, true);
+    } finally {
+      setIsChromeSearching(false);
     }
   };
 
@@ -100,7 +179,6 @@ export const LaptopDashboard: React.FC = () => {
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
-      // Create folder on user's Desktop or Documents
       const target = `C:\\Users\\Dell\\Desktop\\${newFolderName.trim()}`;
       const res = await window.electronAPI.createFolder(target);
       if (res.success) {
@@ -122,6 +200,10 @@ export const LaptopDashboard: React.FC = () => {
       showFeedback(`Failed to open: ${e.message}`, true);
     }
   };
+
+  const filteredApps = installedApps.filter((a) =>
+    a.name.toLowerCase().includes(appFilter.toLowerCase().trim())
+  );
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#030712] cyber-grid overflow-y-auto p-4 space-y-4">
@@ -254,31 +336,150 @@ export const LaptopDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* App Launcher Allowlist Grid */}
+      {/* Direct Media & Web Control: YouTube, WhatsApp, Google Chrome Search */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* YouTube Direct Video Player */}
+        <div className="holo-panel rounded-xl p-3.5 space-y-2.5 border-rose-500/30">
+          <div className="flex items-center justify-between text-xs font-mono text-rose-400">
+            <span className="flex items-center">
+              <Video className="w-4 h-4 mr-1.5 text-rose-400" /> DIRECT YOUTUBE PLAYER
+            </span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">AUTOPLAY</span>
+          </div>
+          <form onSubmit={handlePlayYouTube} className="space-y-2">
+            <input
+              type="text"
+              value={ytQuery}
+              onChange={(e) => setYtQuery(e.target.value)}
+              placeholder="Song or video (e.g. 'Kesariya', 'Arijit Singh')..."
+              className="w-full bg-[#060e22] border border-rose-500/30 focus:border-rose-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-rose-400/40 focus:outline-none font-mono"
+            />
+            <button
+              type="submit"
+              disabled={isYtPlaying}
+              className="w-full py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-mono flex items-center justify-center space-x-1.5 transition-colors"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{isYtPlaying ? 'PLAYING...' : 'PLAY VIDEO NOW'}</span>
+            </button>
+          </form>
+        </div>
+
+        {/* WhatsApp Direct Message Sender */}
+        <div className="holo-panel rounded-xl p-3.5 space-y-2.5 border-emerald-500/30">
+          <div className="flex items-center justify-between text-xs font-mono text-emerald-400">
+            <span className="flex items-center">
+              <MessageSquare className="w-4 h-4 mr-1.5 text-emerald-400" /> WHATSAPP AUTOMATION
+            </span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">DIRECT CHAT</span>
+          </div>
+          <form onSubmit={handleSendWhatsApp} className="space-y-2">
+            <input
+              type="text"
+              value={waTarget}
+              onChange={(e) => setWaTarget(e.target.value)}
+              placeholder="Contact name or phone number..."
+              className="w-full bg-[#060e22] border border-emerald-500/30 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-emerald-400/40 focus:outline-none font-mono"
+            />
+            <div className="flex items-center space-x-1.5">
+              <input
+                type="text"
+                value={waMessage}
+                onChange={(e) => setWaMessage(e.target.value)}
+                placeholder="Message text to send..."
+                className="flex-1 bg-[#060e22] border border-emerald-500/30 focus:border-emerald-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-emerald-400/40 focus:outline-none font-mono"
+              />
+              <button
+                type="submit"
+                disabled={isWaSending}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center space-x-1 transition-colors"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>SEND</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Google Chrome Direct Search */}
+        <div className="holo-panel rounded-xl p-3.5 space-y-2.5 border-cyan-500/30">
+          <div className="flex items-center justify-between text-xs font-mono text-cyan-400">
+            <span className="flex items-center">
+              <Globe className="w-4 h-4 mr-1.5 text-cyan-400" /> CHROME GOOGLE SEARCH
+            </span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300">INSTANT</span>
+          </div>
+          <form onSubmit={handleSearchChrome} className="space-y-2">
+            <input
+              type="text"
+              value={chromeSearchQuery}
+              onChange={(e) => setChromeSearchQuery(e.target.value)}
+              placeholder="Search query (e.g. 'latest AI news')..."
+              className="w-full bg-[#060e22] border border-cyan-500/30 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-cyan-500/40 focus:outline-none font-mono"
+            />
+            <button
+              type="submit"
+              disabled={isChromeSearching}
+              className="w-full py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono flex items-center justify-center space-x-1.5 transition-colors"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>{isChromeSearching ? 'SEARCHING...' : 'SEARCH IN GOOGLE CHROME'}</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* Installed Applications on Laptop Browser (ALL APPS SUPPORT) */}
       <div className="holo-panel rounded-xl p-4 space-y-3">
-        <h2 className="text-xs font-mono text-cyan-400/80 uppercase tracking-wider flex items-center">
-          <ExternalLink className="w-4 h-4 mr-1.5 text-cyan-400" />
-          QUICK APPLICATION LAUNCHER (WINDOWS INTEGRATION)
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-cyan-500/20 pb-2">
+          <div className="flex items-center space-x-2">
+            <AppWindow className="w-4 h-4 text-cyan-400" />
+            <h2 className="text-xs font-mono text-cyan-300 uppercase tracking-wider font-bold">
+              ALL INSTALLED APPS ON LAPTOP ({installedApps.length} APPS DETECTED)
+            </h2>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-cyan-500/50" />
+              <input
+                type="text"
+                value={appFilter}
+                onChange={(e) => setAppFilter(e.target.value)}
+                placeholder="Filter installed apps..."
+                className="bg-[#060e22] border border-cyan-500/30 focus:border-cyan-400 rounded-lg pl-8 pr-2.5 py-1 text-xs text-slate-100 placeholder-cyan-500/40 focus:outline-none font-mono w-48"
+              />
+            </div>
+            <button
+              onClick={() => loadInstalledApps(true)}
+              disabled={isLoadingApps}
+              title="Rescan laptop installed apps"
+              className="p-1.5 rounded-lg bg-[#071128] hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-xs font-mono"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingApps ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Launch Most Used */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
           {[
             { name: 'Google Chrome', icon: Globe, cmd: 'chrome' },
             { name: 'YouTube', icon: Video, cmd: 'youtube' },
             { name: 'WhatsApp', icon: MessageSquare, cmd: 'whatsapp' },
+            { name: 'Cursor', icon: Laptop, cmd: 'cursor' },
+            { name: 'CapCut', icon: Video, cmd: 'capcut' },
             { name: 'Notepad', icon: FileCode, cmd: 'notepad' },
             { name: 'Calculator', icon: Calculator, cmd: 'calc' },
-            { name: 'File Explorer', icon: Folder, cmd: 'explorer' },
             { name: 'Settings', icon: SettingsIcon, cmd: 'settings' },
-            { name: 'PowerShell', icon: Laptop, cmd: 'powershell' },
           ].map((app, i) => {
             const Icon = app.icon;
             return (
               <button
                 key={i}
                 onClick={() => handleOpenApp(app.cmd)}
-                className="p-3 rounded-xl bg-[#060e24] hover:bg-cyan-500/15 border border-cyan-500/20 hover:border-cyan-400 flex flex-col items-center justify-center space-y-2 transition-all group shadow-[0_0_10px_rgba(0,0,0,0.3)]"
+                className="p-2.5 rounded-xl bg-[#060e24] hover:bg-cyan-500/15 border border-cyan-500/20 hover:border-cyan-400 flex flex-col items-center justify-center space-y-1.5 transition-all group"
               >
-                <Icon className="w-6 h-6 text-cyan-400 group-hover:scale-110 group-hover:text-cyan-300 transition-transform" />
+                <Icon className="w-5 h-5 text-cyan-400 group-hover:scale-110 group-hover:text-cyan-300 transition-transform" />
                 <span className="text-[11px] font-mono text-slate-300 group-hover:text-white truncate max-w-full">
                   {app.name}
                 </span>
@@ -286,6 +487,29 @@ export const LaptopDashboard: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Dynamic Filtered Apps Grid (Scrollable) */}
+        {filteredApps.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-cyan-500/10">
+            <span className="text-[10px] font-mono text-cyan-400/60 block mb-2">
+              CLICK ANY APP BELOW TO LAUNCH ON WINDOWS:
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 max-h-48 overflow-y-auto pr-1">
+              {filteredApps.map((app, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleOpenApp(app.name)}
+                  className="px-2.5 py-2 rounded-lg bg-[#050c20] hover:bg-cyan-500/20 border border-cyan-500/20 hover:border-cyan-400 text-left flex items-center justify-between group transition-colors"
+                >
+                  <span className="text-xs font-mono text-slate-300 group-hover:text-cyan-200 truncate pr-1">
+                    {app.name}
+                  </span>
+                  <ExternalLink className="w-3 h-3 text-cyan-500/40 group-hover:text-cyan-400 flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Hardware Tools Row: Volume & Screenshot */}

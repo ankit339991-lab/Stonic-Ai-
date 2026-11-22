@@ -2,7 +2,6 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import path from 'path';
 import fs from 'fs';
 import https from 'https';
-import http from 'http';
 import { app } from 'electron';
 
 export interface ChatMessage {
@@ -21,6 +20,7 @@ export interface AgentStepPlan {
 export class GeminiService {
   private genAI: GoogleGenerativeAI | null = null;
   private currentApiKey: string = '';
+  private verifiedModel: string = 'gemini-2.0-flash';
 
   constructor(apiKey?: string) {
     if (apiKey) {
@@ -42,19 +42,63 @@ export class GeminiService {
   }
 
   /**
-   * Test API key validity
+   * Test API key validity with dynamic model discovery and user-selected model priority
    */
-  async testConnection(apiKey: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const client = new GoogleGenerativeAI(apiKey.trim());
-      const model = client.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const result = await model.generateContent('JARVIS diagnostics check: Respond with "ONLINE" if operational.');
-      const response = await result.response;
-      const text = response.text();
-      return { success: true, message: `Connected! STONIC AI response: ${text.trim()}` };
-    } catch (error: any) {
-      return { success: false, message: `Connection failed: ${error.message}` };
+  async testConnection(apiKey: string, modelName: string = 'gemini-3.1-flash-lite'): Promise<{ success: boolean; message: string }> {
+    const cleanKey = apiKey.trim();
+    if (!cleanKey) {
+      return { success: false, message: 'Please provide a valid Gemini API Key.' };
     }
+
+    const preferredModel = modelName || 'gemini-3.1-flash-lite';
+    const candidateModels = Array.from(new Set([
+      preferredModel,
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash'
+    ]));
+
+    const client = new GoogleGenerativeAI(cleanKey);
+    let lastError = '';
+    let isAuthError = false;
+
+    for (const m of candidateModels) {
+      try {
+        const model = client.getGenerativeModel({ model: m });
+        const result = await model.generateContent('JARVIS diagnostics check: Respond with "ONLINE" if operational.');
+        const response = await result.response;
+        const text = response.text();
+        this.verifiedModel = m;
+        return {
+          success: true,
+          message: `Connected (${m})! STONIC AI response: ${text.trim()}`,
+        };
+      } catch (err: any) {
+        lastError = err.message || '';
+        if (lastError.includes('401') || lastError.includes('ACCESS_TOKEN_TYPE_UNSUPPORTED') || lastError.includes('API key not valid')) {
+          isAuthError = true;
+          break;
+        }
+      }
+    }
+
+    if (isAuthError) {
+      return {
+        success: false,
+        message: 'API Key Rejected (401 Unauthorized): Google rejected this API key. Please check your key or create a fresh key in Google AI Studio (https://aistudio.google.com/app/apikey).',
+      };
+    }
+
+    if (lastError.includes('404')) {
+      return {
+        success: false,
+        message: 'Model Unavailable (404): The selected model is not supported for your account. Please select "Gemini 3.1 Flash Lite" or "Gemini 3.5 Flash" in the dropdown below.',
+      };
+    }
+
+    return { success: false, message: `Connection failed: ${lastError}` };
   }
 
   /**
@@ -63,59 +107,56 @@ export class GeminiService {
   async chat(
     messages: ChatMessage[],
     systemInstruction?: string,
-    modelName: string = 'gemini-2.0-flash'
+    modelName: string = 'gemini-3.1-flash-lite'
   ): Promise<string> {
     if (!this.genAI) {
       throw new Error('Gemini API key is not configured. Please add your API key in Settings.');
     }
 
     const defaultInstruction = `
-You are STONIC AI, an advanced, highly intelligent, futuristic desktop AI assistant inspired by JARVIS from Iron Man.
-You are running directly as a Windows desktop application on the user's laptop.
-Your communication style is polite, articulate, sharp, concise, and futuristic.
-Address the user respectfully (e.g. "Sir" or "Commander" when appropriate).
-You have access to laptop hardware controls, system tools, browser research, documents, and memory.
-When executing laptop commands or answering questions, be direct and helpful.
-Use markdown formatting where appropriate.
+आप STONIC AI हैं — Iron Man के JARVIS से प्रेरित एक अत्यधिक उन्नत, बुद्धिमान और भविष्यवादी Windows Desktop AI Assistant।
+आप सीधे यूज़र के Windows 10/11 लैपटॉप पर चलते हैं।
+
+मुख्य भाषा और व्यवहार निर्देश (Language & Persona Rules):
+1. यूज़र से हमेशा अत्यंत सम्मानजनक, विनम्र और आत्मविश्वासी हिंदी (Hindi) या हिंग्लिश में संवाद करें।
+2. हमेशा यूज़र को आदरपूर्वक "सर" (Sir) कहकर संबोधित करें (उदा: "जी सर", "नमस्ते सर, मैं आपकी क्या सेवा कर सकता हूँ?", "कार्य पूरा हो गया है, सर।")।
+3. जो भी उत्तर दें, वह स्पष्ट, सटीक, संक्षिप्त और उच्च गुणवत्ता वाली हिंदी में होना चाहिए। तकनीकी शब्दों को समझने योग्य हिंदी या कॉमन शब्दों में रखें।
+4. आपके पास लैपटॉप हार्डवेयर (बैटरी, स्टोरेज, वॉल्यूम, स्क्रीनशॉट), वेब रिसर्च, फाइल्स और टास्क ऑटोमेशन का पूर्ण नियंत्रण है।
+5. बातचीत हमेशा शांत और आधिकारिक जारविस अंदाज़ में करें।
     `.trim();
 
-    try {
-      // Use fallback if selected model fails or is unavailable
-      const model = this.genAI.getGenerativeModel({
-        model: modelName || 'gemini-2.0-flash',
-        systemInstruction: systemInstruction || defaultInstruction,
-      });
+    const targetModel = modelName || this.verifiedModel || 'gemini-3.1-flash-lite';
+    const modelsToTry = Array.from(new Set([
+      targetModel,
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash'
+    ]));
 
-      // Prepare conversation history
-      const contents = messages.map(m => ({
-        role: m.role,
-        parts: [{ text: m.content }],
-      }));
+    let lastError: any = null;
+    for (const m of modelsToTry) {
+      try {
+        const model = this.genAI.getGenerativeModel({
+          model: m,
+          systemInstruction: systemInstruction || defaultInstruction,
+        });
 
-      const result = await model.generateContent({ contents });
-      const response = await result.response;
-      return response.text();
-    } catch (error: any) {
-      // If gemini-2.0-flash had an error, try fallback to gemini-1.5-flash
-      if (modelName !== 'gemini-1.5-flash') {
-        try {
-          const fallbackModel = this.genAI.getGenerativeModel({
-            model: 'gemini-1.5-flash',
-            systemInstruction: systemInstruction || defaultInstruction,
-          });
-          const contents = messages.map(m => ({
-            role: m.role,
-            parts: [{ text: m.content }],
-          }));
-          const result = await fallbackModel.generateContent({ contents });
-          const response = await result.response;
-          return response.text();
-        } catch {
-          // bubble original error
-        }
+        const contents = messages.map((msg) => ({
+          role: msg.role,
+          parts: [{ text: msg.content }],
+        }));
+
+        const result = await model.generateContent({ contents });
+        const response = await result.response;
+        return response.text();
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Trial with ${m} failed, trying next candidate...`, err.message);
       }
-      throw error;
     }
+
+    throw lastError || new Error('All model generation attempts failed.');
   }
 
   /**
@@ -125,33 +166,41 @@ Use markdown formatting where appropriate.
     base64Data: string,
     mimeType: string,
     prompt: string,
-    modelName: string = 'gemini-1.5-flash'
+    modelName: string = 'gemini-3.1-flash-lite'
   ): Promise<string> {
     if (!this.genAI) {
       throw new Error('Gemini API key is required for image analysis.');
     }
 
-    // Clean base64 header if present
     const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const targetModel = modelName || this.verifiedModel || 'gemini-3.1-flash-lite';
+    const modelsToTry = [targetModel, 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
 
-    const model = this.genAI.getGenerativeModel({ model: modelName });
-    const result = await model.generateContent([
-      prompt || 'Analyze this image in detail and describe its elements, text, and visual composition.',
-      {
-        inlineData: {
-          data: cleanBase64,
-          mimeType: mimeType || 'image/png',
-        },
-      },
-    ]);
+    let lastError: any = null;
+    for (const m of modelsToTry) {
+      try {
+        const model = this.genAI.getGenerativeModel({ model: m });
+        const result = await model.generateContent([
+          prompt || 'Analyze this image in detail and describe its elements, text, and visual composition.',
+          {
+            inlineData: {
+              data: cleanBase64,
+              mimeType: mimeType || 'image/png',
+            },
+          },
+        ]);
+        const response = await result.response;
+        return response.text();
+      } catch (e) {
+        lastError = e;
+      }
+    }
 
-    const response = await result.response;
-    return response.text();
+    throw lastError || new Error('Vision analysis failed across all models.');
   }
 
   /**
    * Autonomous Agent Plan Generator
-   * Breaks down a user's natural language goal into sequential executable steps
    */
   async planTask(
     goal: string,
@@ -194,12 +243,21 @@ Return ONLY a valid JSON array of objects conforming to:
 Do NOT include backticks or markdown or prose around the JSON. Output only the pure JSON array.
     `.trim();
 
-    const model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    const result = await model.generateContent(plannerPrompt);
-    const response = await result.response;
-    const text = response.text().trim();
+    const plannerModels = [this.verifiedModel || 'gemini-3.1-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
+    let text = '';
 
-    // Clean possible markdown JSON wrappers
+    for (const m of plannerModels) {
+      try {
+        const model = this.genAI.getGenerativeModel({ model: m });
+        const result = await model.generateContent(plannerPrompt);
+        const response = await result.response;
+        text = response.text().trim();
+        if (text) break;
+      } catch (err) {
+        console.warn(`Planner trial with ${m} failed, trying next...`);
+      }
+    }
+
     const jsonStr = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
     try {
@@ -211,7 +269,6 @@ Do NOT include backticks or markdown or prose around the JSON. Output only the p
       console.error('Failed to parse AI agent plan, using fallback structure', e, text);
     }
 
-    // Default 3-step fallback if model returned non-JSON
     return [
       {
         id: 1,
@@ -239,8 +296,6 @@ Do NOT include backticks or markdown or prose around the JSON. Output only the p
 
   /**
    * Real AI Image Generation
-   * Generates real high-quality images using real AI API (Pollinations/Imagen)
-   * Saves to disk in userData/generated_images and returns local path and base64
    */
   async generateImage(prompt: string): Promise<{ success: boolean; filePath?: string; dataUrl?: string; error?: string }> {
     try {
@@ -259,15 +314,12 @@ Do NOT include backticks or markdown or prose around the JSON. Output only the p
       const filename = `stonic_img_${timestamp}.jpg`;
       const filePath = path.join(imagesDir, filename);
 
-      // Encode prompt for the high-resolution AI image generator
       const cleanPrompt = encodeURIComponent(prompt.trim());
       const imageUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=1024&height=1024&nologo=true`;
 
-      // Download the generated image
       const buffer = await new Promise<Buffer>((resolve, reject) => {
         https.get(imageUrl, (res) => {
           if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-            // Follow redirect if any
             https.get(res.headers.location, (redirectRes) => {
               const chunks: any[] = [];
               redirectRes.on('data', chunk => chunks.push(chunk));

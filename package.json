@@ -24,6 +24,7 @@
   "author": "STONIC AI Labs",
   "license": "MIT",
   "dependencies": {
+    "@google/genai": "^3.3.0",
     "@google/generative-ai": "^0.24.1",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",

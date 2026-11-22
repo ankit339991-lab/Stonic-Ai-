@@ -133,3 +133,4 @@ export class SettingsService {
     return { ...this.settings };
   }
 }
+

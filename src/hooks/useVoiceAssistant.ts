@@ -57,7 +57,7 @@ export function useVoiceAssistant({
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = 'hi-IN'; // Set to Hindi (India) - also understands Hinglish & English loanwords cleanly
 
     recognition.onstart = () => {
       setIsListening(true);
@@ -98,11 +98,17 @@ export function useVoiceAssistant({
       const activeText = (finalTranscript || currentInterim).trim();
       setTranscript(activeText);
 
-      // Check Wake Word: "Hey Jarvis" or "Jarvis"
+      // Check Wake Word: "Hey Jarvis", "Jarvis", or Hindi equivalents "जारविस", "हे जारविस"
       const lower = activeText.toLowerCase();
       const targetWake = (wakeWord || 'hey jarvis').toLowerCase();
+      const isWakeWord =
+        lower.includes(targetWake) ||
+        lower.includes('jarvis') ||
+        activeText.includes('जारविस') ||
+        activeText.includes('जार्विस') ||
+        activeText.includes('हे जारविस');
 
-      if (wakeWordEnabled && (lower.includes(targetWake) || lower.includes('jarvis'))) {
+      if (wakeWordEnabled && isWakeWord) {
         setWakeWordDetected(true);
         // Play subtle futuristic wake chime
         playChime(880, 0.1);
@@ -115,6 +121,12 @@ export function useVoiceAssistant({
         } else if (lower.includes('jarvis')) {
           const index = lower.indexOf('jarvis');
           command = activeText.substring(index + 6).trim();
+        } else if (activeText.includes('जारविस')) {
+          const index = activeText.indexOf('जारविस');
+          command = activeText.substring(index + 6).trim();
+        } else if (activeText.includes('जार्विस')) {
+          const index = activeText.indexOf('जार्विस');
+          command = activeText.substring(index + 7).trim();
         }
 
         if (finalTranscript && command) {
@@ -217,24 +229,31 @@ export function useVoiceAssistant({
 
         const utterance = new SpeechSynthesisUtterance(cleanText);
 
-        // Select chosen voice or prefer Microsoft David/Mark/Natural or English UK
+        // Select chosen voice or prefer native Hindi (Hemant / Kalpana / Google हिन्दी)
         if (voiceSettings.voiceURI) {
-          const match = availableVoices.find((v) => v.voiceURI === voiceSettings.voiceURI);
+          const match = availableVoices.find((v) => v.voiceURI === voiceSettings.voiceURI || v.name === voiceSettings.voiceURI);
           if (match) utterance.voice = match;
-        } else {
-          const preferred = availableVoices.find(
-            (v) =>
-              (v.name.includes('David') ||
-                v.name.includes('Natural') ||
-                v.name.includes('George') ||
-                v.name.includes('Google UK English Male')) &&
-              v.lang.startsWith('en')
-          );
+        }
+
+        if (!utterance.voice) {
+          const preferred =
+            availableVoices.find((v) => v.name.includes('Hemant') || v.voiceURI.includes('Hemant')) ||
+            availableVoices.find((v) => v.lang === 'hi-IN' || v.lang.startsWith('hi')) ||
+            availableVoices.find((v) => v.name.includes('Kalpana') || v.name.includes('Hindi')) ||
+            availableVoices.find(
+              (v) =>
+                (v.name.includes('David') ||
+                  v.name.includes('Natural') ||
+                  v.name.includes('George') ||
+                  v.name.includes('Google UK English Male')) &&
+                v.lang.startsWith('en')
+            );
           if (preferred) utterance.voice = preferred;
         }
 
+        utterance.lang = utterance.voice?.lang || 'hi-IN';
         utterance.pitch = voiceSettings.pitch ?? 1.0;
-        utterance.rate = voiceSettings.rate ?? 1.05;
+        utterance.rate = voiceSettings.rate ?? 1.0;
         utterance.volume = voiceSettings.volume ?? 1.0;
 
         utterance.onstart = () => {
@@ -278,3 +297,4 @@ export function useVoiceAssistant({
     stopSpeaking,
   };
 }
+

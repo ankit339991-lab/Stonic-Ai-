@@ -39,3 +39,4 @@ export const VoiceWave: React.FC<VoiceWaveProps> = ({
     </div>
   );
 };
+

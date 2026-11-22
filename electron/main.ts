@@ -46,6 +46,7 @@ async function createWindow() {
     frame: false, // Frameless for futuristic JARVIS HUD Titlebar
     backgroundColor: '#030712',
     icon: appIcon,
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -61,6 +62,11 @@ async function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'dist-react', 'index.html'));
   }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    mainWindow?.focus();
+  });
 
   // Handle window close -> minimize to tray if enabled
   mainWindow.on('close', (event) => {
@@ -178,7 +184,11 @@ function setupIpc() {
   ipcMain.handle('system:getMetrics', () => systemService.getSystemMetrics());
   ipcMain.handle('system:getBattery', () => systemService.getBatteryStatus());
   ipcMain.handle('system:getStorage', () => systemService.getStorageInfo());
+  ipcMain.handle('system:getInstalledApps', (_, force) => systemService.getInstalledApps(force));
   ipcMain.handle('system:openApp', (_, appName: string) => systemService.openApp(appName));
+  ipcMain.handle('system:playYouTube', (_, query: string) => systemService.playYouTubeVideo(query));
+  ipcMain.handle('system:sendWhatsApp', (_, target: string, message: string) => systemService.sendWhatsAppMessage(target, message));
+  ipcMain.handle('system:searchGoogle', (_, query: string) => systemService.searchGoogle(query));
   ipcMain.handle('system:adjustVolume', (_, action, amount) => systemService.adjustVolume(action, amount));
   ipcMain.handle('system:takeScreenshot', () => systemService.takeScreenshot());
   ipcMain.handle('system:lockLaptop', () => systemService.lockLaptop());
@@ -219,7 +229,7 @@ function setupIpc() {
     }
     return updated;
   });
-  ipcMain.handle('gemini:testKey', (_, key) => geminiService.testConnection(key));
+  ipcMain.handle('gemini:testKey', (_, key, model) => geminiService.testConnection(key, model));
 
   // Gemini & AI
   ipcMain.handle('gemini:chat', (_, messages, systemInstruction, model) =>
@@ -267,3 +277,4 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
