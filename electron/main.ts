@@ -184,6 +184,7 @@ function setupIpc() {
   ipcMain.handle('system:getMetrics', () => systemService.getSystemMetrics());
   ipcMain.handle('system:getBattery', () => systemService.getBatteryStatus());
   ipcMain.handle('system:getStorage', () => systemService.getStorageInfo());
+  ipcMain.handle('system:getDesktopApps', (_, force) => systemService.getDesktopApps(force));
   ipcMain.handle('system:getInstalledApps', (_, force) => systemService.getInstalledApps(force));
   ipcMain.handle('system:openApp', (_, appName: string) => systemService.openApp(appName));
   ipcMain.handle('system:playYouTube', (_, query: string) => systemService.playYouTubeVideo(query));

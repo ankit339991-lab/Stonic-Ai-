@@ -47,8 +47,9 @@ export const LaptopDashboard: React.FC = () => {
   const [chromeSearchQuery, setChromeSearchQuery] = useState('');
   const [isChromeSearching, setIsChromeSearching] = useState(false);
 
-  // Installed Apps State
+  // Installed & Desktop Apps State
   const [installedApps, setInstalledApps] = useState<Array<{ name: string; appId: string }>>([]);
+  const [desktopApps, setDesktopApps] = useState<Array<{ name: string; path: string; source: string }>>([]);
   const [appFilter, setAppFilter] = useState('');
   const [isLoadingApps, setIsLoadingApps] = useState(false);
 
@@ -59,8 +60,12 @@ export const LaptopDashboard: React.FC = () => {
   const loadInstalledApps = async (force = false) => {
     setIsLoadingApps(true);
     try {
-      const apps = await window.electronAPI.getInstalledApps(force);
+      const [apps, dApps] = await Promise.all([
+        window.electronAPI.getInstalledApps(force),
+        window.electronAPI.getDesktopApps(force),
+      ]);
       setInstalledApps(apps || []);
+      setDesktopApps(dApps || []);
     } catch (e: any) {
       console.warn('Could not load installed apps:', e.message);
     } finally {
@@ -429,13 +434,13 @@ export const LaptopDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Installed Applications on Laptop Browser (ALL APPS SUPPORT) */}
+      {/* Desktop & Installed Applications on Laptop (DIRECT DESKTOP ACCESS) */}
       <div className="holo-panel rounded-xl p-4 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-cyan-500/20 pb-2">
           <div className="flex items-center space-x-2">
-            <AppWindow className="w-4 h-4 text-cyan-400" />
+            <Laptop className="w-4 h-4 text-cyan-400" />
             <h2 className="text-xs font-mono text-cyan-300 uppercase tracking-wider font-bold">
-              ALL INSTALLED APPS ON LAPTOP ({installedApps.length} APPS DETECTED)
+              DESKTOP SHORTCUTS & INSTALLED APPS ({desktopApps.length} ON DESKTOP, {installedApps.length} TOTAL)
             </h2>
           </div>
           <div className="flex items-center space-x-2">
@@ -445,14 +450,14 @@ export const LaptopDashboard: React.FC = () => {
                 type="text"
                 value={appFilter}
                 onChange={(e) => setAppFilter(e.target.value)}
-                placeholder="Filter installed apps..."
-                className="bg-[#060e22] border border-cyan-500/30 focus:border-cyan-400 rounded-lg pl-8 pr-2.5 py-1 text-xs text-slate-100 placeholder-cyan-500/40 focus:outline-none font-mono w-48"
+                placeholder="Search desktop or PC app..."
+                className="bg-[#060e22] border border-cyan-500/30 focus:border-cyan-400 rounded-lg pl-8 pr-2.5 py-1 text-xs text-slate-100 placeholder-cyan-500/40 focus:outline-none font-mono w-52"
               />
             </div>
             <button
               onClick={() => loadInstalledApps(true)}
               disabled={isLoadingApps}
-              title="Rescan laptop installed apps"
+              title="Rescan desktop and PC apps"
               className="p-1.5 rounded-lg bg-[#071128] hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 text-xs font-mono"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoadingApps ? 'animate-spin' : ''}`} />
@@ -460,41 +465,77 @@ export const LaptopDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Launch Most Used */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
-          {[
-            { name: 'Google Chrome', icon: Globe, cmd: 'chrome' },
-            { name: 'YouTube', icon: Video, cmd: 'youtube' },
-            { name: 'WhatsApp', icon: MessageSquare, cmd: 'whatsapp' },
-            { name: 'Cursor', icon: Laptop, cmd: 'cursor' },
-            { name: 'CapCut', icon: Video, cmd: 'capcut' },
-            { name: 'Notepad', icon: FileCode, cmd: 'notepad' },
-            { name: 'Calculator', icon: Calculator, cmd: 'calc' },
-            { name: 'Settings', icon: SettingsIcon, cmd: 'settings' },
-          ].map((app, i) => {
-            const Icon = app.icon;
-            return (
-              <button
-                key={i}
-                onClick={() => handleOpenApp(app.cmd)}
-                className="p-2.5 rounded-xl bg-[#060e24] hover:bg-cyan-500/15 border border-cyan-500/20 hover:border-cyan-400 flex flex-col items-center justify-center space-y-1.5 transition-all group"
-              >
-                <Icon className="w-5 h-5 text-cyan-400 group-hover:scale-110 group-hover:text-cyan-300 transition-transform" />
-                <span className="text-[11px] font-mono text-slate-300 group-hover:text-white truncate max-w-full">
-                  {app.name}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Dynamic Filtered Apps Grid (Scrollable) */}
-        {filteredApps.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-cyan-500/10">
-            <span className="text-[10px] font-mono text-cyan-400/60 block mb-2">
-              CLICK ANY APP BELOW TO LAUNCH ON WINDOWS:
+        {/* Real Desktop Shortcuts Section */}
+        {desktopApps.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-[11px] font-mono text-emerald-400 font-bold flex items-center space-x-1">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
+              <span>APPS DETECTED DIRECTLY ON YOUR PC DESKTOP ({desktopApps.length}):</span>
             </span>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 max-h-48 overflow-y-auto pr-1">
+              {desktopApps
+                .filter((a) => !appFilter.trim() || a.name.toLowerCase().includes(appFilter.toLowerCase().trim()))
+                .map((dApp, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleOpenApp(dApp.name)}
+                    className="px-2.5 py-2 rounded-lg bg-emerald-950/20 hover:bg-emerald-500/25 border border-emerald-500/30 hover:border-emerald-400 text-left flex items-center justify-between group transition-colors shadow-[0_0_8px_rgba(16,185,129,0.15)]"
+                  >
+                    <div className="truncate pr-1">
+                      <span className="text-xs font-mono text-emerald-200 group-hover:text-white truncate block">
+                        {dApp.name}
+                      </span>
+                      <span className="text-[9px] font-mono text-emerald-400/60 block uppercase">
+                        {dApp.source}
+                      </span>
+                    </div>
+                    <ExternalLink className="w-3 h-3 text-emerald-400/50 group-hover:text-emerald-300 flex-shrink-0" />
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick Launch Icons */}
+        <div className="pt-2 border-t border-cyan-500/10">
+          <span className="text-[10px] font-mono text-cyan-400/60 block mb-1.5 uppercase">
+            QUICK HARDWARE SHORTCUTS:
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-2">
+            {[
+              { name: 'VLC Media Player', icon: Video, cmd: 'vlc' },
+              { name: 'WhatsApp', icon: MessageSquare, cmd: 'whatsapp' },
+              { name: 'Brave', icon: Globe, cmd: 'brave' },
+              { name: 'VS Code', icon: FileCode, cmd: 'code' },
+              { name: 'Google Chrome', icon: Globe, cmd: 'chrome' },
+              { name: 'Notepad', icon: FileCode, cmd: 'notepad' },
+              { name: 'Calculator', icon: Calculator, cmd: 'calc' },
+              { name: 'Settings', icon: SettingsIcon, cmd: 'settings' },
+            ].map((app, i) => {
+              const Icon = app.icon;
+              return (
+                <button
+                  key={i}
+                  onClick={() => handleOpenApp(app.cmd)}
+                  className="p-2 rounded-xl bg-[#060e24] hover:bg-cyan-500/15 border border-cyan-500/20 hover:border-cyan-400 flex flex-col items-center justify-center space-y-1 transition-all group"
+                >
+                  <Icon className="w-4 h-4 text-cyan-400 group-hover:scale-110 group-hover:text-cyan-300 transition-transform" />
+                  <span className="text-[10px] font-mono text-slate-300 group-hover:text-white truncate max-w-full">
+                    {app.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Dynamic Filtered All-Apps Grid (Scrollable) */}
+        {filteredApps.length > 0 && appFilter.trim() && (
+          <div className="mt-2 pt-2 border-t border-cyan-500/10">
+            <span className="text-[10px] font-mono text-cyan-400/60 block mb-2">
+              ALL MATCHING WINDOWS APPS:
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 max-h-36 overflow-y-auto pr-1">
               {filteredApps.map((app, idx) => (
                 <button
                   key={idx}

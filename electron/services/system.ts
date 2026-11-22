@@ -44,6 +44,12 @@ export interface FileItem {
   modifiedAt: string;
 }
 
+export interface DesktopApp {
+  name: string;
+  path: string;
+  source: 'desktop' | 'public-desktop' | 'start-menu';
+}
+
 export interface InstalledApp {
   name: string;
   appId: string;
@@ -52,7 +58,9 @@ export interface InstalledApp {
 export class SystemService {
   private pythonHelperPath: string;
   private cachedApps: InstalledApp[] = [];
+  private cachedDesktopApps: DesktopApp[] = [];
   private lastAppScanTime: number = 0;
+  private lastDesktopScanTime: number = 0;
 
   constructor() {
     this.pythonHelperPath = path.join(__dirname, '..', 'python', 'system_helper.py');
@@ -61,8 +69,87 @@ export class SystemService {
       this.pythonHelperPath = path.join(process.cwd(), 'electron', 'python', 'system_helper.py');
     }
 
-    // Pre-cache installed apps in background on startup
-    this.getInstalledApps().catch(() => {});
+    // Pre-cache desktop apps and installed apps on startup
+    this.getDesktopApps().catch(() => {});
+    this.getInstalledApps().catch(() => { });
+  }
+
+  /**
+   * Scan and get all applications directly from the User's Desktop and Public Desktop
+   */
+  async getDesktopApps(forceRefresh = false): Promise<DesktopApp[]> {
+    const now = Date.now();
+    if (!forceRefresh && this.cachedDesktopApps.length > 0 && now - this.lastDesktopScanTime < 60000) {
+      return this.cachedDesktopApps;
+    }
+
+    const apps: DesktopApp[] = [];
+    const desktopDirs = [
+      { dir: path.join(os.homedir(), 'Desktop'), source: 'desktop' as const },
+      { dir: 'C:\\Users\\Public\\Desktop', source: 'public-desktop' as const },
+    ];
+
+    for (const { dir, source } of desktopDirs) {
+      if (!fs.existsSync(dir)) continue;
+      try {
+        const files = fs.readdirSync(dir, { withFileTypes: true });
+        for (const file of files) {
+          const ext = path.extname(file.name).toLowerCase();
+          if (ext === '.lnk' || ext === '.exe' || ext === '.url') {
+            const base = path.basename(file.name, ext).trim();
+            // Ignore system or non-app clutter
+            if (base && !base.startsWith('desktop.ini') && !base.startsWith('.')) {
+              apps.push({
+                name: base,
+                path: path.join(dir, file.name),
+                source,
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`Error reading desktop folder ${dir}:`, err.message);
+      }
+    }
+
+    // Also scan Start Menu Programs folder for any shortcuts not on desktop
+    const startMenuDirs = [
+      path.join(process.env.APPDATA || '', 'Microsoft\\Windows\\Start Menu\\Programs'),
+      'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs',
+    ];
+
+    const scanDirRecursive = (dirPath: string, depth = 0) => {
+      if (depth > 3 || !fs.existsSync(dirPath)) return;
+      try {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(dirPath, entry.name);
+          if (entry.isDirectory()) {
+            scanDirRecursive(full, depth + 1);
+          } else {
+            const ext = path.extname(entry.name).toLowerCase();
+            if (ext === '.lnk' || ext === '.exe') {
+              const base = path.basename(entry.name, ext).trim();
+              if (base && !apps.some((a) => a.name.toLowerCase() === base.toLowerCase())) {
+                apps.push({
+                  name: base,
+                  path: full,
+                  source: 'start-menu',
+                });
+              }
+            }
+          }
+        }
+      } catch {}
+    };
+
+    for (const smDir of startMenuDirs) {
+      scanDirRecursive(smDir, 0);
+    }
+
+    this.cachedDesktopApps = apps;
+    this.lastDesktopScanTime = now;
+    return apps;
   }
 
   /**
@@ -164,15 +251,17 @@ export class SystemService {
   }
 
   /**
-   * Open ANY application installed on the laptop dynamically
+   * Open ANY application installed on Desktop or Windows laptop
    */
-  async openApp(appName: string): Promise<{ success: boolean; message: string; matchedApp?: string }> {
+  async openApp(appName: string): Promise<{ success: boolean; message: string; matchedApp?: string; path?: string }> {
     let clean = appName.toLowerCase().trim();
 
     // Clean common prefixes and suffixes
     clean = clean
-      .replace(/^(open|launch|start|kholo|chalu karo|chalao)\s+/, '')
-      .replace(/\s+(kholo|open karo|chalao|chalu karo|app|application)$/, '')
+      .replace(/^(open|launch|start|kholo|chalu karo|chalao|kripya|please)\s+/, '')
+      .replace(/\s+(kholo|open karo|chalao|chalu karo|app|application|program|software)$/, '')
+      .replace(/^(desktop par|desktop pe|laptop par|laptop me|computer me|pc me|mera|mere)\s+/, '')
+      .replace(/\s+(desktop par|desktop pe|laptop par|pc par)$/, '')
       .trim();
 
     if (!clean) {
@@ -185,153 +274,185 @@ export class SystemService {
       return { success: true, message: `Opened URL: ${appName}` };
     }
 
-    // 1. Check if user asked for YouTube song/video or search
+    // 1. YouTube specific handler ONLY if user explicitly wants to play video
     if (clean.includes('youtube')) {
       const ytQuery = clean.replace(/^(youtube\s*(pe|par|me|in)?|play\s*on\s*youtube)/i, '').trim();
       if (ytQuery) {
         return await this.playYouTubeVideo(ytQuery);
       }
-      await shell.openExternal('https://www.youtube.com');
-      return { success: true, message: 'YouTube opened in browser' };
     }
 
-    // 2. Check if user asked for Google search
-    if (clean.startsWith('google ') || clean.includes('google search')) {
-      const gQuery = clean.replace(/^(google\s*search\s*|google\s*(pe|par|me)?\s*search\s*karo\s*|google\s*)/i, '').trim();
-      if (gQuery) {
-        return await this.searchGoogle(gQuery);
+    // ========================================================
+    // PRIORITY 1: SEARCH USER'S DESKTOP SHORTCUTS & APPS FIRST
+    // ========================================================
+    const desktopApps = await this.getDesktopApps();
+
+    // Mapping for common aliases
+    const aliases: { [key: string]: string[] } = {
+      'vlc': ['vlc media player', 'vlc'],
+      'vlc player': ['vlc media player', 'vlc'],
+      'whatsapp': ['whatsapp', 'wa'],
+      'brave': ['brave'],
+      'brave browser': ['brave'],
+      'vscode': ['visual studio code', 'vscode', 'code'],
+      'code': ['visual studio code', 'vscode'],
+      'visual studio code': ['visual studio code'],
+      'telegram': ['teligram', 'telegram'],
+      'teligram': ['teligram', 'telegram'],
+      'chatgpt': ['chatgpt', 'chat gpt'],
+      'claude': ['claude'],
+      'opencode': ['opencode'],
+      'ghidra': ['ghidra'],
+      'antigravity': ['antigravity ide', 'antigravity'],
+      'antigravity ide': ['antigravity ide', 'antigravity'],
+      'chrome': ['google chrome', 'chrome', 'google'],
+      'google chrome': ['google chrome', 'chrome', 'google'],
+      'google': ['google chrome', 'chrome', 'google'],
+      'facebook': ['facebook', 'fb'],
+      'instagram': ['instagram', 'insta'],
+      'jiosphere': ['jiosphere'],
+      'excalidraw': ['excalidraw'],
+      'chathub': ['chathub'],
+      'x': ['x', 'twitter'],
+      'youtube': ['youtube'],
+    };
+
+    let matchedDesktop: DesktopApp | undefined;
+
+    // Check aliases
+    const aliasTargets = aliases[clean];
+    if (aliasTargets) {
+      for (const target of aliasTargets) {
+        matchedDesktop = desktopApps.find(
+          (a) => a.name.toLowerCase() === target || a.name.toLowerCase().includes(target)
+        );
+        if (matchedDesktop) break;
       }
-      await execAsync('start chrome');
-      return { success: true, message: 'Google Chrome opened' };
     }
 
-    // 3. Quick hardwired mappings for common Windows essentials
-    if (clean === 'chrome' || clean === 'google chrome') {
-      try {
-        await execAsync('start chrome');
-        return { success: true, message: 'Google Chrome opened' };
-      } catch {
-        await shell.openExternal('https://www.google.com');
-        return { success: true, message: 'Google opened' };
-      }
+    // Check exact name match on Desktop
+    if (!matchedDesktop) {
+      matchedDesktop = desktopApps.find((a) => a.name.toLowerCase() === clean);
     }
 
-    if (clean === 'whatsapp' || clean === 'wa') {
+    // Check startsWith match on Desktop
+    if (!matchedDesktop) {
+      matchedDesktop = desktopApps.find((a) => a.name.toLowerCase().startsWith(clean));
+    }
+
+    // Check includes match on Desktop
+    if (!matchedDesktop) {
+      matchedDesktop = desktopApps.find(
+        (a) => a.name.toLowerCase().includes(clean) || clean.includes(a.name.toLowerCase())
+      );
+    }
+
+    // If an app is found on Desktop, launch it directly!
+    if (matchedDesktop) {
       try {
-        await execAsync('start whatsapp:');
-        return { success: true, message: 'WhatsApp Desktop launched' };
-      } catch {
+        const filePath = matchedDesktop.path;
+
+        // 1. Try native electron shell.openPath (Standard Windows double-click action)
+        const openErr = await shell.openPath(filePath);
+        if (!openErr) {
+          const locName = matchedDesktop.source === 'desktop' ? 'Desktop' : 'Desktop/Start Menu';
+          return {
+            success: true,
+            message: `${locName} se '${matchedDesktop.name}' open kar diya hai, sir!`,
+            matchedApp: matchedDesktop.name,
+            path: filePath,
+          };
+        }
+
+        // 2. PowerShell Start-Process fallback
+        await execAsync(`powershell -NoProfile -Command "Start-Process '${filePath.replace(/'/g, "''")}'"`);
+        return {
+          success: true,
+          message: `Desktop se '${matchedDesktop.name}' open kar diya hai, sir!`,
+          matchedApp: matchedDesktop.name,
+          path: filePath,
+        };
+      } catch (err: any) {
+        // Fallback to cmd start
         try {
-          await execAsync(`powershell -NoProfile -Command "Start-Process 'explorer.exe' -ArgumentList 'shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App'"`);
-          return { success: true, message: 'WhatsApp Desktop launched' };
-        } catch {
-          await shell.openExternal('https://web.whatsapp.com');
-          return { success: true, message: 'WhatsApp Web opened in browser' };
+          await execAsync(`cmd /c start "" "${matchedDesktop.path}"`);
+          return {
+            success: true,
+            message: `Desktop se '${matchedDesktop.name}' open kar diya hai, sir!`,
+            matchedApp: matchedDesktop.name,
+            path: matchedDesktop.path,
+          };
+        } catch (innerErr: any) {
+          return { success: false, message: `Failed to open ${matchedDesktop.name}: ${err.message}` };
         }
       }
     }
 
+    // ========================================================
+    // PRIORITY 2: STANDARD WINDOWS BUILT-IN SYSTEM TOOLS
+    // ========================================================
     if (clean === 'notepad' || clean === 'note') {
       await execAsync('start notepad.exe');
-      return { success: true, message: 'Notepad opened' };
+      return { success: true, message: 'Notepad opened', matchedApp: 'Notepad' };
     }
-
     if (clean === 'calculator' || clean === 'calc') {
       await execAsync('start calc.exe');
-      return { success: true, message: 'Calculator opened' };
+      return { success: true, message: 'Calculator opened', matchedApp: 'Calculator' };
     }
-
     if (clean === 'explorer' || clean === 'file explorer' || clean === 'my computer' || clean === 'files') {
       await execAsync('start explorer.exe');
-      return { success: true, message: 'File Explorer opened' };
+      return { success: true, message: 'File Explorer opened', matchedApp: 'File Explorer' };
     }
-
     if (clean === 'settings' || clean === 'windows settings') {
       await execAsync('start ms-settings:');
-      return { success: true, message: 'Windows Settings opened' };
+      return { success: true, message: 'Windows Settings opened', matchedApp: 'Settings' };
     }
-
     if (clean === 'cmd' || clean === 'terminal' || clean === 'powershell') {
       await execAsync('start powershell.exe');
-      return { success: true, message: 'PowerShell terminal opened' };
+      return { success: true, message: 'PowerShell terminal opened', matchedApp: 'PowerShell' };
     }
-
     if (clean === 'paint' || clean === 'mspaint') {
       await execAsync('start mspaint.exe');
-      return { success: true, message: 'Paint opened' };
+      return { success: true, message: 'Paint opened', matchedApp: 'Paint' };
     }
-
     if (clean === 'task manager' || clean === 'taskmgr') {
       await execAsync('start taskmgr.exe');
-      return { success: true, message: 'Task Manager opened' };
+      return { success: true, message: 'Task Manager opened', matchedApp: 'Task Manager' };
     }
 
-    // 4. Dynamic search across all installed apps on this laptop
+    // ========================================================
+    // PRIORITY 3: WINDOWS INSTALLED APPS (UWP / Get-StartApps)
+    // ========================================================
     const apps = await this.getInstalledApps();
-
-    // Priority 1: Exact name match
     let match = apps.find((a) => a.name.toLowerCase() === clean);
+    if (!match) match = apps.find((a) => a.name.toLowerCase().startsWith(clean));
+    if (!match) match = apps.find((a) => a.name.toLowerCase().includes(clean));
 
-    // Priority 2: Starts with match (e.g. "cursor" -> "Cursor", "capcut" -> "CapCut", "brave" -> "Brave")
-    if (!match) {
-      match = apps.find((a) => a.name.toLowerCase().startsWith(clean));
-    }
-
-    // Priority 3: Substring / includes match (e.g. "vlc" -> "VLC media player", "word" -> "Microsoft Word")
-    if (!match) {
-      match = apps.find((a) => a.name.toLowerCase().includes(clean));
-    }
-
-    // Priority 4: Word match (e.g. "media player" or "code")
-    if (!match) {
-      const words = clean.split(/\s+/).filter(Boolean);
-      match = apps.find((a) => {
-        const lowerName = a.name.toLowerCase();
-        return words.every((w) => lowerName.includes(w));
-      });
-    }
-
-    // If an installed app was matched, launch it via its AppID
     if (match) {
       try {
         const appId = match.appId;
-
-        // If AppID is a web URL
-        if (appId.startsWith('http://') || appId.startsWith('https://')) {
-          await shell.openExternal(appId);
-          return { success: true, message: `Opened '${match.name}' in browser`, matchedApp: match.name };
-        }
-
-        // If AppID is a direct executable path
+        // If direct executable path
         if (appId.includes('\\') && (appId.endsWith('.exe') || fs.existsSync(appId))) {
           await execAsync(`start "" "${appId}"`);
-          return { success: true, message: `Opened '${match.name}' successfully`, matchedApp: match.name };
+          return { success: true, message: `'${match.name}' open kar diya hai, sir!`, matchedApp: match.name };
         }
-
-        // Launch UWP or Windows Shell AppID via explorer shell:AppsFolder
-        await execAsync(`powershell -NoProfile -Command "Start-Process 'explorer.exe' -ArgumentList 'shell:AppsFolder\\${appId}'"`);
-        return { success: true, message: `Opened '${match.name}' successfully`, matchedApp: match.name };
+        // If UWP or Shell AppID
+        if (!appId.startsWith('http://') && !appId.startsWith('https://')) {
+          await execAsync(`powershell -NoProfile -Command "Start-Process 'explorer.exe' -ArgumentList 'shell:AppsFolder\\${appId}'"`);
+          return { success: true, message: `'${match.name}' open kar diya hai, sir!`, matchedApp: match.name };
+        }
       } catch (err: any) {
-        // Fallback to direct start
-        try {
-          await execAsync(`cmd /c start "" "${clean}"`);
-          return { success: true, message: `Launched '${match.name}'`, matchedApp: match.name };
-        } catch (innerErr: any) {
-          return { success: false, message: `Failed to open ${match.name}: ${err.message}` };
-        }
+        console.warn('App launch error:', err.message);
       }
     }
 
-    // 5. General Fallback: Try launching via Windows cmd start
-    try {
-      await execAsync(`cmd /c start "" "${clean}"`);
-      return { success: true, message: `Started '${clean}' via Windows system.` };
-    } catch {
-      return {
-        success: false,
-        message: `Application '${clean}' laptop par nahi mili. Aap installed apps list me check kar sakte hain.`,
-      };
-    }
+    // ========================================================
+    // PRIORITY 4: DO NOT SEARCH CHROME! RETURN ACCURATE STATUS
+    // ========================================================
+    return {
+      success: false,
+      message: `Aapke Desktop par '${appName}' application nahi mili. Kripya check karein ki Desktop par iska shortcut available hai ya nahi.`,
+    };
   }
 
   /**

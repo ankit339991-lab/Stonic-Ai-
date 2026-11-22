@@ -10,6 +10,7 @@ export const API = {
   getMetrics: () => ipcRenderer.invoke('system:getMetrics'),
   getBattery: () => ipcRenderer.invoke('system:getBattery'),
   getStorage: () => ipcRenderer.invoke('system:getStorage'),
+  getDesktopApps: (forceRefresh?: boolean) => ipcRenderer.invoke('system:getDesktopApps', forceRefresh),
   getInstalledApps: (forceRefresh?: boolean) => ipcRenderer.invoke('system:getInstalledApps', forceRefresh),
   openApp: (appName: string) => ipcRenderer.invoke('system:openApp', appName),
   playYouTube: (query: string) => ipcRenderer.invoke('system:playYouTube', query),

@@ -139,28 +139,8 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 3. Google Chrome Direct Search
-        // Matches: "google pe ai news search karo", "search weather in delhi on google", "google search latest tech news", "chrome me cricket score search karo"
-        const isGoogleSearch =
-          (lower.includes('google') && (lower.includes('search') || lower.includes('dhoondho') || lower.includes('pe') || lower.includes('par'))) ||
-          (lower.startsWith('search ') && (lower.includes('google') || lower.includes('web')));
-
-        if (isGoogleSearch) {
-          const gQuery = text
-            .replace(/^(google\s*search\s*|search\s+on\s+google\s+for\s*|search\s+google\s+for\s*|search\s*)/i, '')
-            .replace(/^(google\s*(?:pe|par|me)?\s*)/i, '')
-            .replace(/\s+(search\s*karo|dhoondho|karo|batao)$/i, '')
-            .trim();
-
-          const res = await window.electronAPI.searchGoogle(gQuery || 'Google');
-          addAssistantMessage(res.message);
-          await voice.speak(res.message);
-          setIsThinking(false);
-          return;
-        }
-
-        // 4. Open ANY Installed Application on Laptop
-        // Matches: "open capcut", "cursor kholo", "vlc player open karo", "brave kholo", "open notepad", "word open karo", "calculator kholo"
+        // 3. Open ANY Installed Application on Desktop or PC (HIGHEST PRIORITY FOR APPS)
+        // Matches: "open vlc", "vlc kholo", "desktop par whatsapp open karo", "brave kholo", "vscode open karo", "telegram kholo"
         const isAppLaunch =
           lower.startsWith('open ') ||
           lower.startsWith('launch ') ||
@@ -172,22 +152,48 @@ export const App: React.FC = () => {
           lower.includes('chalu karo') ||
           lower.includes('चालू करो') ||
           lower.includes('chalao') ||
-          lower.includes('चलाओ');
+          lower.includes('चलाओ') ||
+          lower.includes('chalu') ||
+          lower.includes('चालू');
 
-        if (isAppLaunch) {
+        if (isAppLaunch && !isYouTubePlay && !isWhatsApp) {
           const appTarget = text
             .replace(/^(open|launch|start|chalu\s+karo)\s+/i, '')
             .replace(/\s+(kholo|खोलो|open\s+karo|ओपन\s+करो|chalu\s+karo|चालू\s+करो|chalao|चलाओ|karo|करो)$/i, '')
+            .replace(/^(desktop\s+par|desktop\s+pe|pc\s+par|laptop\s+par|computer\s+par|mera|mere)\s+/i, '')
+            .replace(/\s+(desktop\s+par|desktop\s+pe|pc\s+par|laptop\s+par)$/i, '')
             .replace(/^(कृपया|please)\s+/i, '')
             .trim();
 
           const res = await window.electronAPI.openApp(appTarget);
-          let reply = res.success
-            ? (res.matchedApp ? `'${res.matchedApp}' आपके लिए ओपन कर दिया है, सर।` : res.message)
-            : res.message;
+          let reply = res.message;
 
           addAssistantMessage(reply);
           await voice.speak(reply);
+          setIsThinking(false);
+          return;
+        }
+
+        // 4. Google Chrome Direct Search (ONLY when user explicitly asks to search/dhoondho)
+        // Matches: "google search AI news", "google pe weather search karo", "search python on google"
+        const isGoogleSearch =
+          lower.startsWith('search ') ||
+          lower.includes('search karo') ||
+          lower.includes('सर्च करो') ||
+          lower.includes('dhoondho') ||
+          lower.includes('ढूंढो') ||
+          lower.includes('google search');
+
+        if (isGoogleSearch) {
+          const gQuery = text
+            .replace(/^(google\s*search\s*|search\s+on\s+google\s+for\s*|search\s+google\s+for\s*|search\s*)/i, '')
+            .replace(/^(google\s*(?:pe|par|me)?\s*)/i, '')
+            .replace(/\s+(search\s*karo|dhoondho|karo|batao)$/i, '')
+            .trim();
+
+          const res = await window.electronAPI.searchGoogle(gQuery || 'Google');
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
           setIsThinking(false);
           return;
         }
