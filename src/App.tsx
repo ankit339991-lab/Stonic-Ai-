@@ -82,42 +82,209 @@ export const App: React.FC = () => {
       const lower = text.toLowerCase().trim();
 
       try {
-        // 1. YouTube Direct Video / Song Playback
-        // Matches: "play kesariya on youtube", "youtube pe kesariya chalao", "play song shape of you", "youtube par arijit singh ke gaane lagao"
-        const isYouTubePlay =
-          (lower.includes('youtube') && (lower.includes('play') || lower.includes('chalao') || lower.includes('lagao') || lower.includes('sunao') || lower.includes('bajao') || lower.includes('video'))) ||
-          (lower.startsWith('play ') && !lower.includes('game'));
-
-        if (isYouTubePlay) {
-          let ytQuery = text
-            .replace(/^(play\s+song|play\s+video|play|chalao|lagao|sunao|bajao)\s+/i, '')
-            .replace(/\s+(on\s+youtube|youtube\s+pe|youtube\s+par|in\s+youtube)$/i, '')
-            .replace(/^(youtube\s+pe|youtube\s+par|youtube\s+me|youtube)\s+/i, '')
-            .replace(/\s+(chalao|play\s+karo|lagao|sunao|bajao|kholo|play)$/i, '')
-            .trim();
-
-          if (!ytQuery) ytQuery = 'trending songs';
-
-          const res = await window.electronAPI.playYouTube(ytQuery);
-          addAssistantMessage(res.message);
-          await voice.speak(res.message);
+        // 0. STOP SPEAKING / STOP AUTOMATION (INSTANT VOICE INTERRUPT)
+        if (
+          lower === 'stop speaking' ||
+          lower === 'stop voice' ||
+          lower === 'shut up' ||
+          lower.includes('bolna band') ||
+          lower.includes('chup ho jao') ||
+          lower.includes('chup raho')
+        ) {
+          voice.stopSpeaking();
+          const reply = 'Speech stopped, Sir.';
+          addAssistantMessage(reply);
           setIsThinking(false);
           return;
         }
 
-        // 2. WhatsApp Direct Message Automation
+        if (
+          lower.includes('stop browser') ||
+          lower.includes('stop automation') ||
+          lower.includes('browser band karo') ||
+          lower.includes('automation roko')
+        ) {
+          await window.electronAPI.stopBrowserAutomation();
+          voice.stopSpeaking();
+          const reply = 'Visible browser automation halted, Sir.';
+          addAssistantMessage(reply);
+          await voice.speak(reply);
+          setIsThinking(false);
+          return;
+        }
+
+        // 1. VISIBLE BROWSER AUTOMATION: CHATGPT
+        // Matches: "hey jarvis, open chatgpt", "open chatgpt", "chatgpt kholo", "ask chatgpt [question]"
+        if (lower.includes('chatgpt') || lower.includes('chat gpt')) {
+          if (
+            lower.startsWith('ask chatgpt') ||
+            lower.startsWith('ask chat gpt') ||
+            lower.includes('se poocho') ||
+            lower.includes('se pucho') ||
+            lower.includes('par poocho') ||
+            (lower.includes('chatgpt') && (lower.includes('about') || lower.includes('what is') || lower.includes('tell me') || lower.includes('kya hai')))
+          ) {
+            let question = text
+              .replace(/^(hey jarvis|jarvis|stonic)?\s*(ask\s+chatgpt|ask\s+chat\s+gpt)\s*(about|to|for|:)?\s*/i, '')
+              .replace(/^(chatgpt\s*se\s*poocho|chatgpt\s*se\s*pucho|chatgpt\s*par\s*search\s*karo)\s*/i, '')
+              .trim();
+
+            if (!question) question = text;
+
+            addAssistantMessage(`Opening visible Chrome and submitting prompt to ChatGPT: "${question}"...`);
+            await voice.speak('Asking ChatGPT now, Sir...');
+
+            const res = await window.electronAPI.askChatGPT(question);
+            if (res.success && res.answer) {
+              addAssistantMessage(`### ChatGPT Response:\n\n${res.answer}`);
+              await voice.speak(res.answer);
+            } else {
+              addAssistantMessage(res.message);
+              await voice.speak(res.message);
+            }
+            setIsThinking(false);
+            return;
+          }
+
+          if (lower.includes('open') || lower.includes('kholo') || lower.includes('launch') || lower.includes('chalu')) {
+            await window.electronAPI.visibleBrowserOpen('chatgpt');
+            const reply = 'ChatGPT has been opened in visible Google Chrome, Sir.';
+            addAssistantMessage(reply);
+            await voice.speak(reply);
+            setIsThinking(false);
+            return;
+          }
+        }
+
+        // 2. VISIBLE BROWSER AUTOMATION: GEMINI
+        // Matches: "open gemini", "gemini kholo", "ask gemini [question]", "gemini se poocho [question]"
+        if (lower.includes('gemini') && !lower.includes('api key')) {
+          if (
+            lower.startsWith('ask gemini') ||
+            lower.includes('se poocho') ||
+            lower.includes('se pucho') ||
+            lower.includes('par poocho') ||
+            (lower.includes('gemini') && (lower.includes('about') || lower.includes('what is') || lower.includes('tell me') || lower.includes('kya hai')))
+          ) {
+            let question = text
+              .replace(/^(hey jarvis|jarvis|stonic)?\s*(ask\s+gemini)\s*(about|to|for|:)?\s*/i, '')
+              .replace(/^(gemini\s*se\s*poocho|gemini\s*se\s*pucho|gemini\s*par\s*search\s*karo)\s*/i, '')
+              .trim();
+
+            if (!question) question = text;
+
+            addAssistantMessage(`Opening visible Chrome and submitting prompt to Google Gemini: "${question}"...`);
+            await voice.speak('Asking Gemini now, Sir...');
+
+            const res = await window.electronAPI.askGemini(question);
+            if (res.success && res.answer) {
+              addAssistantMessage(`### Google Gemini Response:\n\n${res.answer}`);
+              await voice.speak(res.answer);
+            } else {
+              addAssistantMessage(res.message);
+              await voice.speak(res.message);
+            }
+            setIsThinking(false);
+            return;
+          }
+
+          if (lower.includes('open') || lower.includes('kholo') || lower.includes('launch') || lower.includes('chalu')) {
+            await window.electronAPI.visibleBrowserOpen('gemini');
+            const reply = 'Google Gemini has been opened in visible Google Chrome, Sir.';
+            addAssistantMessage(reply);
+            await voice.speak(reply);
+            setIsThinking(false);
+            return;
+          }
+        }
+
+        // 3. VISIBLE YOUTUBE AUTOMATION (Play, Pause, Resume, Stop)
+        if (lower.includes('youtube')) {
+          if (lower.includes('pause') || lower.includes('roko') || lower.includes('rok do')) {
+            const res = await window.electronAPI.visibleBrowserControlYouTube('pause');
+            addAssistantMessage(res.message);
+            await voice.speak('YouTube video paused, Sir.');
+            setIsThinking(false);
+            return;
+          }
+          if (lower.includes('resume') || lower.includes('resume video') || (lower.includes('chalao') && lower.includes('video'))) {
+            const res = await window.electronAPI.visibleBrowserControlYouTube('resume');
+            addAssistantMessage(res.message);
+            await voice.speak('YouTube video resumed, Sir.');
+            setIsThinking(false);
+            return;
+          }
+          if (lower.includes('search') || lower.includes('play') || lower.includes('gaana') || lower.includes('song')) {
+            let ytQuery = text
+              .replace(/^(search\s+youtube\s+for|search\s+on\s+youtube\s+for|play\s+on\s+youtube|play\s+youtube|play\s+song|play)\s*/i, '')
+              .replace(/\s+(and\s+play\s+it|on\s+youtube|youtube\s+pe|youtube\s+par)$/i, '')
+              .replace(/^(youtube\s+pe|youtube\s+par|youtube\s+me)\s*/i, '')
+              .replace(/\s+(chalao|play\s+karo|lagao|sunao|bajao)$/i, '')
+              .trim();
+
+            if (!ytQuery) ytQuery = 'trending songs';
+
+            addAssistantMessage(`Opening YouTube in visible Chrome and playing "${ytQuery}"...`);
+            await voice.speak(`Searching and playing ${ytQuery} on YouTube, Sir.`);
+
+            const res = await window.electronAPI.visibleBrowserPlayYouTube(ytQuery);
+            const reply = res.success ? `Now playing "${res.title}" on YouTube!` : `YouTube opened for ${ytQuery}.`;
+            addAssistantMessage(reply);
+            setIsThinking(false);
+            return;
+          }
+
+          if (lower.includes('open') || lower.includes('kholo') || lower.includes('launch')) {
+            await window.electronAPI.visibleBrowserOpen('youtube');
+            const reply = 'YouTube opened in visible Chrome, Sir.';
+            addAssistantMessage(reply);
+            await voice.speak(reply);
+            setIsThinking(false);
+            return;
+          }
+        }
+
+        // 4. VISIBLE GOOGLE SEARCH AUTOMATION
+        if (
+          lower.startsWith('search google') ||
+          lower.startsWith('search on google') ||
+          (lower.includes('google') && (lower.includes('search') || lower.includes('dhoondho')))
+        ) {
+          const gQuery = text
+            .replace(/^(search\s+google\s+for|search\s+on\s+google\s+for|search\s+google|search|google\s*search)\s*/i, '')
+            .replace(/^(google\s*(?:pe|par|me)?\s*)/i, '')
+            .replace(/\s+(search\s*karo|dhoondho|karo|batao)$/i, '')
+            .trim();
+
+          addAssistantMessage(`Searching Google in visible Chrome for: "${gQuery || 'AI news'}"...`);
+          await voice.speak(`Searching Google for ${gQuery || 'AI news'}, Sir.`);
+
+          const res = await window.electronAPI.visibleBrowserSearchGoogle(gQuery || 'AI news');
+          addAssistantMessage(res.summary);
+          await voice.speak(res.summary);
+          setIsThinking(false);
+          return;
+        }
+
+        if (lower === 'open google' || lower === 'google kholo' || lower === 'open google in chrome') {
+          await window.electronAPI.visibleBrowserOpen('google');
+          const reply = 'Google homepage opened in Chrome, Sir.';
+          addAssistantMessage(reply);
+          await voice.speak(reply);
+          setIsThinking(false);
+          return;
+        }
+
+        // 5. WhatsApp Direct Message Automation
         // Matches: "whatsapp pe 9876543210 ko hello bhejo", "whatsapp pe papa ko mai ghar aa raha hu bhejo", "send hello to rahul on whatsapp"
         const isWhatsApp =
           lower.includes('whatsapp') || lower.includes('व्हाट्सएप');
 
         if (isWhatsApp && (lower.includes('bhejo') || lower.includes('send') || lower.includes('message') || lower.includes('msg') || lower.includes('likho') || lower.includes('ko'))) {
-          // Extract recipient and message
           let recipient = '';
           let messageBody = '';
 
-          // Pattern: "whatsapp pe [recipient] ko [message] bhejo"
           const matchKo = text.match(/(?:whatsapp\s+(?:pe|par|me)?\s*)?(.+?)\s+ko\s+(.+?)(?:\s+(?:bhejo|send\s+karo|likho))?$/i);
-          // Pattern: "send [message] to [recipient] on whatsapp"
           const matchSendTo = text.match(/send\s+(.+?)\s+to\s+(.+?)(?:\s+on\s+whatsapp)?$/i);
 
           if (matchKo && matchKo[1] && matchKo[2]) {
@@ -127,7 +294,6 @@ export const App: React.FC = () => {
             messageBody = matchSendTo[1].trim();
             recipient = matchSendTo[2].trim();
           } else {
-            // General fallback: anything after "whatsapp"
             recipient = 'Friend';
             messageBody = text.replace(/^(whatsapp\s+(?:pe|par|me)?\s*(?:message\s*)?(?:bhejo|send)?)/i, '').trim() || 'Hello';
           }
@@ -139,7 +305,7 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 3. Open ANY Installed Application on Desktop or PC (HIGHEST PRIORITY FOR APPS)
+        // 6. Open ANY Installed Application on Desktop or PC (HIGHEST PRIORITY FOR APPS)
         // Matches: "open vlc", "vlc kholo", "desktop par whatsapp open karo", "brave kholo", "vscode open karo", "telegram kholo"
         const isAppLaunch =
           lower.startsWith('open ') ||
@@ -156,7 +322,7 @@ export const App: React.FC = () => {
           lower.includes('chalu') ||
           lower.includes('चालू');
 
-        if (isAppLaunch && !isYouTubePlay && !isWhatsApp) {
+        if (isAppLaunch && !isWhatsApp) {
           const appTarget = text
             .replace(/^(open|launch|start|chalu\s+karo)\s+/i, '')
             .replace(/\s+(kholo|खोलो|open\s+karo|ओपन\s+करो|chalu\s+karo|चालू\s+करो|chalao|चलाओ|karo|करो)$/i, '')
@@ -170,30 +336,6 @@ export const App: React.FC = () => {
 
           addAssistantMessage(reply);
           await voice.speak(reply);
-          setIsThinking(false);
-          return;
-        }
-
-        // 4. Google Chrome Direct Search (ONLY when user explicitly asks to search/dhoondho)
-        // Matches: "google search AI news", "google pe weather search karo", "search python on google"
-        const isGoogleSearch =
-          lower.startsWith('search ') ||
-          lower.includes('search karo') ||
-          lower.includes('सर्च करो') ||
-          lower.includes('dhoondho') ||
-          lower.includes('ढूंढो') ||
-          lower.includes('google search');
-
-        if (isGoogleSearch) {
-          const gQuery = text
-            .replace(/^(google\s*search\s*|search\s+on\s+google\s+for\s*|search\s+google\s+for\s*|search\s*)/i, '')
-            .replace(/^(google\s*(?:pe|par|me)?\s*)/i, '')
-            .replace(/\s+(search\s*karo|dhoondho|karo|batao)$/i, '')
-            .trim();
-
-          const res = await window.electronAPI.searchGoogle(gQuery || 'Google');
-          addAssistantMessage(res.message);
-          await voice.speak(res.message);
           setIsThinking(false);
           return;
         }

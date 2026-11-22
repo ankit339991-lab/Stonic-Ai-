@@ -8,6 +8,7 @@ import { DatabaseService } from './services/database';
 import { SettingsService } from './services/settings';
 import { DocumentService } from './services/document';
 import { BrowserService } from './services/browser';
+import { VisibleBrowserService } from './services/visibleBrowser';
 import { GeminiService } from './services/gemini';
 import { AgentService } from './services/agent';
 
@@ -23,6 +24,7 @@ const systemService = new SystemService();
 const databaseService = new DatabaseService();
 const documentService = new DocumentService();
 const browserService = new BrowserService();
+const visibleBrowserService = new VisibleBrowserService();
 const geminiService = new GeminiService(settingsService.getSettings().geminiApiKey);
 const agentService = new AgentService(
   geminiService,
@@ -158,6 +160,11 @@ agentService.on('log', (log) => {
   mainWindow?.webContents.send('agent:log', log);
 });
 
+// Forward Visible Browser events to renderer
+visibleBrowserService.on('status-update', (status) => {
+  mainWindow?.webContents.send('visible-browser:status', status);
+});
+
 // Setup IPC Handlers
 function setupIpc() {
   // Window controls
@@ -199,9 +206,24 @@ function setupIpc() {
   ipcMain.handle('system:copyOrMoveFile', (_, s, d, m) => systemService.copyOrMoveFile(s, d, m));
   ipcMain.handle('system:openDocument', (_, p) => systemService.openDocument(p));
 
-  // Browser automation
+  // Browser automation (Headless)
   ipcMain.handle('browser:search', (_, query, limit) => browserService.search(query, limit));
   ipcMain.handle('browser:scrape', (_, url) => browserService.scrapeWebpage(url));
+
+  // Visible Browser Automation System (Live Chrome + Persistent Profile)
+  ipcMain.handle('visible-browser:getStatus', () => visibleBrowserService.getStatus());
+  ipcMain.handle('visible-browser:setEnabled', (_, enabled) => visibleBrowserService.setEnabled(enabled));
+  ipcMain.handle('visible-browser:stop', () => {
+    visibleBrowserService.stopAutomation();
+    return { success: true };
+  });
+  ipcMain.handle('visible-browser:open', (_, target) => visibleBrowserService.openWebsite(target));
+  ipcMain.handle('visible-browser:askChatGPT', (_, question) => visibleBrowserService.askChatGPT(question));
+  ipcMain.handle('visible-browser:askGemini', (_, question) => visibleBrowserService.askGemini(question));
+  ipcMain.handle('visible-browser:searchGoogle', (_, query) => visibleBrowserService.searchGoogle(query));
+  ipcMain.handle('visible-browser:playYouTube', (_, query) => visibleBrowserService.playYouTube(query));
+  ipcMain.handle('visible-browser:controlYouTube', (_, action) => visibleBrowserService.controlYouTube(action));
+  ipcMain.handle('visible-browser:close', () => visibleBrowserService.close());
 
   // Documents
   ipcMain.handle('document:read', (_, filePath) => documentService.readDocument(filePath));
@@ -271,6 +293,7 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   browserService.close();
+  visibleBrowserService.close();
 });
 
 app.on('window-all-closed', () => {

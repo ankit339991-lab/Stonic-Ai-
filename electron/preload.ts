@@ -28,9 +28,28 @@ export const API = {
     ipcRenderer.invoke('system:copyOrMoveFile', src, dest, mode),
   openDocument: (filePath: string) => ipcRenderer.invoke('system:openDocument', filePath),
 
-  // Browser automation
+  // Browser automation (Headless)
   searchWeb: (query: string, limit?: number) => ipcRenderer.invoke('browser:search', query, limit),
   scrapeWebpage: (url: string) => ipcRenderer.invoke('browser:scrape', url),
+
+  // Visible Browser Automation System (Live Chrome + Persistent Profile)
+  getVisibleBrowserStatus: () => ipcRenderer.invoke('visible-browser:getStatus'),
+  setVisibleBrowserEnabled: (enabled: boolean) => ipcRenderer.invoke('visible-browser:setEnabled', enabled),
+  stopBrowserAutomation: () => ipcRenderer.invoke('visible-browser:stop'),
+  visibleBrowserOpen: (target: 'chatgpt' | 'gemini' | 'google' | 'youtube' | string) =>
+    ipcRenderer.invoke('visible-browser:open', target),
+  askChatGPT: (question: string) => ipcRenderer.invoke('visible-browser:askChatGPT', question),
+  askGemini: (question: string) => ipcRenderer.invoke('visible-browser:askGemini', question),
+  visibleBrowserSearchGoogle: (query: string) => ipcRenderer.invoke('visible-browser:searchGoogle', query),
+  visibleBrowserPlayYouTube: (query: string) => ipcRenderer.invoke('visible-browser:playYouTube', query),
+  visibleBrowserControlYouTube: (action: 'pause' | 'resume' | 'stop') =>
+    ipcRenderer.invoke('visible-browser:controlYouTube', action),
+  closeVisibleBrowser: () => ipcRenderer.invoke('visible-browser:close'),
+  onVisibleBrowserStatus: (callback: (status: any) => void) => {
+    const handler = (_event: any, status: any) => callback(status);
+    ipcRenderer.on('visible-browser:status', handler);
+    return () => ipcRenderer.removeListener('visible-browser:status', handler);
+  },
 
   // Document processing
   readDocument: (filePath: string) => ipcRenderer.invoke('document:read', filePath),

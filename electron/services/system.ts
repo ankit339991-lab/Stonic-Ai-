@@ -70,7 +70,7 @@ export class SystemService {
     }
 
     // Pre-cache desktop apps and installed apps on startup
-    this.getDesktopApps().catch(() => {});
+    this.getDesktopApps().catch(() => { });
     this.getInstalledApps().catch(() => { });
   }
 
@@ -140,7 +140,7 @@ export class SystemService {
             }
           }
         }
-      } catch {}
+      } catch { }
     };
 
     for (const smDir of startMenuDirs) {

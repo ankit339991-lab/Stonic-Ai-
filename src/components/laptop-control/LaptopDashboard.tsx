@@ -240,11 +240,10 @@ export const LaptopDashboard: React.FC = () => {
       {/* Floating Action Feedback Toast */}
       {feedbackMsg && (
         <div
-          className={`p-3 rounded-lg border text-xs font-mono flex items-center justify-between animate-fadeIn ${
-            feedbackMsg.isError
+          className={`p-3 rounded-lg border text-xs font-mono flex items-center justify-between animate-fadeIn ${feedbackMsg.isError
               ? 'bg-rose-950/60 border-rose-500/60 text-rose-200'
               : 'bg-cyan-950/60 border-cyan-400/60 text-cyan-200 shadow-[0_0_15px_rgba(0,243,255,0.2)]'
-          }`}
+            }`}
         >
           <div className="flex items-center space-x-2">
             {feedbackMsg.isError ? (
@@ -277,9 +276,8 @@ export const LaptopDashboard: React.FC = () => {
           </div>
           <div className="w-full h-1.5 bg-[#060e22] rounded-full overflow-hidden border border-cyan-500/20">
             <div
-              className={`h-full transition-all duration-500 ${
-                telemetry.battery.percent > 20 ? 'bg-cyan-400' : 'bg-rose-500'
-              }`}
+              className={`h-full transition-all duration-500 ${telemetry.battery.percent > 20 ? 'bg-cyan-400' : 'bg-rose-500'
+                }`}
               style={{ width: `${telemetry.battery.percent}%` }}
             />
           </div>
