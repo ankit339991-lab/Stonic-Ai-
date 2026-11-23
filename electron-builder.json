@@ -8,6 +8,7 @@
     "dist-electron/**/*",
     "dist-react/**/*",
     "electron/python/**/*",
+    "electron/scripts/**/*",
     "assets/**/*",
     "package.json"
   ],
