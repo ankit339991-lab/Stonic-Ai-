@@ -5,7 +5,7 @@ import fs from 'fs';
 import os from 'os';
 import https from 'https';
 import http from 'http';
-import { shell, app } from 'electron';
+import { shell, app, clipboard } from 'electron';
 
 const execAsync = promisify(exec);
 
@@ -300,6 +300,9 @@ export class SystemService {
       'telegram': ['teligram', 'telegram'],
       'teligram': ['teligram', 'telegram'],
       'chatgpt': ['chatgpt', 'chat gpt'],
+      'chat gpt': ['chatgpt', 'chat gpt'],
+      'gemini': ['google gemini', 'gemini'],
+      'google gemini': ['google gemini', 'gemini'],
       'claude': ['claude'],
       'opencode': ['opencode'],
       'ghidra': ['ghidra'],
@@ -307,14 +310,16 @@ export class SystemService {
       'antigravity ide': ['antigravity ide', 'antigravity'],
       'chrome': ['google chrome', 'chrome', 'google'],
       'google chrome': ['google chrome', 'chrome', 'google'],
-      'google': ['google chrome', 'chrome', 'google'],
+      'google': ['google', 'google chrome', 'chrome'],
       'facebook': ['facebook', 'fb'],
       'instagram': ['instagram', 'insta'],
       'jiosphere': ['jiosphere'],
       'excalidraw': ['excalidraw'],
       'chathub': ['chathub'],
       'x': ['x', 'twitter'],
+      'twitter': ['x', 'twitter'],
       'youtube': ['youtube'],
+      'yt': ['youtube'],
     };
 
     let matchedDesktop: DesktopApp | undefined;
@@ -456,13 +461,209 @@ export class SystemService {
   }
 
   /**
+   * Run focus_and_type.ps1 safely to focus window and send keyboard actions
+   */
+  private async runFocusAndType(appTitle: string, action = 'paste_enter'): Promise<void> {
+    const candidates = [
+      path.join(app.getAppPath(), 'electron', 'scripts', 'focus_and_type.ps1'),
+      path.join(process.cwd(), 'electron', 'scripts', 'focus_and_type.ps1'),
+      path.join(__dirname, '..', 'scripts', 'focus_and_type.ps1'),
+      path.join(__dirname, 'scripts', 'focus_and_type.ps1'),
+    ];
+    const targetScript = candidates.find((p) => fs.existsSync(p));
+    if (!targetScript) return;
+
+    return new Promise((resolve) => {
+      const ps = spawn('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        targetScript,
+        '-AppTitle',
+        appTitle,
+        '-Action',
+        action,
+      ]);
+      ps.on('close', () => resolve());
+      ps.on('error', () => resolve());
+    });
+  }
+
+  /**
+   * Open Desktop application from Desktop shortcut and automatically type/search question into it
+   */
+  async openDesktopAppAndSearch(appName: string, queryOrQuestion: string): Promise<{ success: boolean; message: string; appName: string }> {
+    const cleanApp = appName.toLowerCase().trim();
+    const query = queryOrQuestion.trim();
+
+    // 1. Web Browsers (Chrome, Brave, JioSphere, Google)
+    const isChrome = cleanApp === 'chrome' || cleanApp === 'google chrome' || cleanApp === 'google';
+    const isBrave = cleanApp === 'brave' || cleanApp === 'brave browser';
+    const isJioSphere = cleanApp === 'jiosphere';
+
+    if (isChrome || isBrave || isJioSphere) {
+      const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      try {
+        if (isChrome) {
+          await execAsync(`start chrome "${searchUrl}"`);
+        } else if (isBrave) {
+          await execAsync(`start brave "${searchUrl}"`);
+        } else if (isJioSphere) {
+          await execAsync(`start jiosphere "${searchUrl}"`);
+        }
+        return {
+          success: true,
+          message: `${isBrave ? 'Brave' : 'Google Chrome'} open karke "${query}" search kar diya hai, sir!`,
+          appName: isBrave ? 'Brave' : 'Google Chrome',
+        };
+      } catch {
+        await shell.openExternal(searchUrl);
+        return {
+          success: true,
+          message: `Browser open karke "${query}" search kar diya hai, sir!`,
+          appName: 'Google Chrome',
+        };
+      }
+    }
+
+    // 2. YouTube
+    if (cleanApp.includes('youtube')) {
+      const ytRes = await this.playYouTubeVideo(query);
+      return {
+        success: ytRes.success,
+        message: ytRes.message,
+        appName: 'YouTube',
+      };
+    }
+
+    // 3. ChatGPT
+    if (cleanApp.includes('chatgpt') || cleanApp.includes('chat gpt')) {
+      try {
+        clipboard.writeText(query);
+      } catch (e: any) {
+        console.warn('Clipboard write error:', e.message);
+      }
+
+      const gptUrl = `https://chatgpt.com/?q=${encodeURIComponent(query)}`;
+      const desktopApps = await this.getDesktopApps();
+      const matched = desktopApps.find((a) => /chatgpt/i.test(a.name));
+      if (matched) {
+        try {
+          await shell.openPath(matched.path);
+        } catch {
+          await shell.openExternal(gptUrl);
+        }
+      } else {
+        await shell.openExternal(gptUrl);
+      }
+
+      this.runFocusAndType('ChatGPT', 'paste_enter').catch(() => {});
+
+      return {
+        success: true,
+        message: `ChatGPT open karke "${query}" submit kar diya hai, sir!`,
+        appName: 'ChatGPT',
+      };
+    }
+
+    // 4. Google Gemini
+    if (cleanApp.includes('gemini')) {
+      try {
+        clipboard.writeText(query);
+      } catch (e: any) {
+        console.warn('Clipboard write error:', e.message);
+      }
+
+      const desktopApps = await this.getDesktopApps();
+      const matched = desktopApps.find((a) => /gemini/i.test(a.name));
+      if (matched) {
+        try {
+          await shell.openPath(matched.path);
+        } catch {
+          await shell.openExternal('https://gemini.google.com/app');
+        }
+      } else {
+        await shell.openExternal('https://gemini.google.com/app');
+      }
+
+      this.runFocusAndType('Gemini', 'paste_enter').catch(() => {});
+
+      return {
+        success: true,
+        message: `Google Gemini open karke "${query}" search kar diya hai, sir!`,
+        appName: 'Google Gemini',
+      };
+    }
+
+    // 5. Claude
+    if (cleanApp.includes('claude')) {
+      try {
+        clipboard.writeText(query);
+      } catch (e: any) {
+        console.warn('Clipboard write error:', e.message);
+      }
+
+      const desktopApps = await this.getDesktopApps();
+      const matched = desktopApps.find((a) => /claude/i.test(a.name));
+      if (matched) {
+        try {
+          await shell.openPath(matched.path);
+        } catch {
+          await shell.openExternal('https://claude.ai');
+        }
+      } else {
+        await shell.openExternal('https://claude.ai');
+      }
+
+      this.runFocusAndType('Claude', 'paste_enter').catch(() => {});
+
+      return {
+        success: true,
+        message: `Claude open karke "${query}" submit kar diya hai, sir!`,
+        appName: 'Claude',
+      };
+    }
+
+    // 6. Generic Desktop App
+    const desktopApps = await this.getDesktopApps();
+    let matched = desktopApps.find((a) => a.name.toLowerCase() === cleanApp || a.name.toLowerCase().includes(cleanApp));
+    if (!matched) {
+      return {
+        success: false,
+        message: `Aapke Desktop par '${appName}' application nahi mili. Kripya check karein ki shortcut available hai.`,
+        appName,
+      };
+    }
+
+    try {
+      clipboard.writeText(query);
+    } catch (e: any) {
+      console.warn('Clipboard write error:', e.message);
+    }
+
+    try {
+      await shell.openPath(matched.path);
+    } catch {
+      await execAsync(`powershell -NoProfile -Command "Start-Process '${matched.path.replace(/'/g, "''")}'"`);
+    }
+
+    this.runFocusAndType(matched.name, 'paste_enter').catch(() => {});
+
+    return {
+      success: true,
+      message: `Desktop se '${matched.name}' open karke "${query}" submit kar diya hai, sir!`,
+      appName: matched.name,
+    };
+  }
+
+  /**
    * Search and directly play a video or song on YouTube
    */
   async playYouTubeVideo(query: string): Promise<{ success: boolean; message: string; url: string; videoId?: string }> {
-    const cleanQuery = query.trim();
-    if (!cleanQuery) {
-      await shell.openExternal('https://www.youtube.com');
-      return { success: true, message: 'YouTube opened', url: 'https://www.youtube.com' };
+    let cleanQuery = query.trim();
+    if (!cleanQuery || /^(song|play|gaana|video|music)$/i.test(cleanQuery)) {
+      cleanQuery = 'trending songs 2026';
     }
 
     try {
@@ -484,7 +685,6 @@ export class SystemService {
             let body = '';
             res.on('data', (chunk) => {
               body += chunk;
-              // Check early if we already have a video match to avoid reading entire stream
               const earlyMatch = body.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
               if (earlyMatch) {
                 req.destroy();
@@ -508,13 +708,13 @@ export class SystemService {
       if (videoId) {
         const playUrl = `https://www.youtube.com/watch?v=${videoId}&autoplay=1`;
         try {
-          await execAsync(`start chrome "${playUrl}"`);
+          await execAsync(`start "" "${playUrl}"`);
         } catch {
           await shell.openExternal(playUrl);
         }
         return {
           success: true,
-          message: `यूट्यूब पर "${cleanQuery}" प्ले किया जा रहा है!`,
+          message: `यूट्यूब पर "${cleanQuery}" सर्च करके वीडियो प्ले कर दिया है, सर!`,
           url: playUrl,
           videoId,
         };
@@ -522,19 +722,23 @@ export class SystemService {
 
       // If videoId wasn't found quickly, open the direct search results on YouTube
       try {
-        await execAsync(`start chrome "${searchUrl}"`);
+        await execAsync(`start "" "${searchUrl}"`);
       } catch {
         await shell.openExternal(searchUrl);
       }
       return {
         success: true,
-        message: `यूट्यूब पर "${cleanQuery}" सर्च करके ओपन कर दिया है!`,
+        message: `यूट्यूब पर "${cleanQuery}" सर्च करके वीडियो ओपन कर दिया है, सर!`,
         url: searchUrl,
       };
     } catch (err: any) {
       const fallbackUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQuery)}`;
       await shell.openExternal(fallbackUrl);
-      return { success: true, message: `YouTube opened: ${fallbackUrl}`, url: fallbackUrl };
+      return {
+        success: true,
+        message: `यूट्यूब पर "${cleanQuery}" सर्च कर दिया है, सर!`,
+        url: fallbackUrl,
+      };
     }
   }
 

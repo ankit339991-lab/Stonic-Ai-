@@ -241,8 +241,8 @@ export const LaptopDashboard: React.FC = () => {
       {feedbackMsg && (
         <div
           className={`p-3 rounded-lg border text-xs font-mono flex items-center justify-between animate-fadeIn ${feedbackMsg.isError
-              ? 'bg-rose-950/60 border-rose-500/60 text-rose-200'
-              : 'bg-cyan-950/60 border-cyan-400/60 text-cyan-200 shadow-[0_0_15px_rgba(0,243,255,0.2)]'
+            ? 'bg-rose-950/60 border-rose-500/60 text-rose-200'
+            : 'bg-cyan-950/60 border-cyan-400/60 text-cyan-200 shadow-[0_0_15px_rgba(0,243,255,0.2)]'
             }`}
         >
           <div className="flex items-center space-x-2">

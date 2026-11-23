@@ -113,164 +113,133 @@ export const App: React.FC = () => {
           return;
         }
 
-        // 1. VISIBLE BROWSER AUTOMATION: CHATGPT
-        // Matches: "hey jarvis, open chatgpt", "open chatgpt", "chatgpt kholo", "ask chatgpt [question]"
-        if (lower.includes('chatgpt') || lower.includes('chat gpt')) {
-          if (
-            lower.startsWith('ask chatgpt') ||
-            lower.startsWith('ask chat gpt') ||
-            lower.includes('se poocho') ||
-            lower.includes('se pucho') ||
-            lower.includes('par poocho') ||
-            (lower.includes('chatgpt') && (lower.includes('about') || lower.includes('what is') || lower.includes('tell me') || lower.includes('kya hai')))
-          ) {
-            let question = text
-              .replace(/^(hey jarvis|jarvis|stonic)?\s*(ask\s+chatgpt|ask\s+chat\s+gpt)\s*(about|to|for|:)?\s*/i, '')
-              .replace(/^(chatgpt\s*se\s*poocho|chatgpt\s*se\s*pucho|chatgpt\s*par\s*search\s*karo)\s*/i, '')
-              .trim();
+        // ========================================================
+        // 1. YOUTUBE PLAY & VIDEO SEARCH AUTOMATION
+        // Matches: "open youtube and play song", "open youtube and play kesariya",
+        // "youtube par video search karke play bhi kare", "play kesariya on youtube"
+        // ========================================================
+        const isYouTubeIntent =
+          lower.includes('youtube') &&
+          (lower.includes('play') ||
+            lower.includes('song') ||
+            lower.includes('gaana') ||
+            lower.includes('video') ||
+            lower.includes('chalao') ||
+            lower.includes('bajao') ||
+            lower.includes('lagao') ||
+            lower.includes('sunao') ||
+            lower.includes('search') ||
+            lower.includes('dhoondho'));
 
-            if (!question) question = text;
+        if (isYouTubeIntent && !lower.includes('pause') && !lower.includes('resume')) {
+          let ytQuery = text
+            .replace(/^(hey jarvis|jarvis|stonic)?\s*(open\s+youtube\s+(and|aur|phir)\s+(play|search)|search\s+youtube\s+for|search\s+on\s+youtube\s+for|play\s+on\s+youtube|play\s+youtube|play\s+song|play|open\s+youtube)\s*/i, '')
+            .replace(/^(youtube\s*(?:pe|par|me)?\s*(?:video\s*)?(?:search\s*karke\s*)?(?:play\s*bhi\s*kare|play\s*karo|chalao|bajao|lagao|sunao)?)\s*/i, '')
+            .replace(/\s+(and\s+play\s+it|and\s+play\s+song|play\s+bhi\s+kare|play\s+karo|chalao|lagao|sunao|bajao|search\s*karo|dhoondho)$/i, '')
+            .replace(/^(song|gaana|video)\s*/i, '')
+            .trim();
 
-            addAssistantMessage(`Opening visible Chrome and submitting prompt to ChatGPT: "${question}"...`);
-            await voice.speak('Asking ChatGPT now, Sir...');
-
-            const res = await window.electronAPI.askChatGPT(question);
-            if (res.success && res.answer) {
-              addAssistantMessage(`### ChatGPT Response:\n\n${res.answer}`);
-              await voice.speak(res.answer);
-            } else {
-              addAssistantMessage(res.message);
-              await voice.speak(res.message);
-            }
-            setIsThinking(false);
-            return;
+          if (!ytQuery || /^(song|video|gaana|music|play)$/i.test(ytQuery)) {
+            ytQuery = 'latest trending songs';
           }
 
-          if (lower.includes('open') || lower.includes('kholo') || lower.includes('launch') || lower.includes('chalu')) {
-            await window.electronAPI.visibleBrowserOpen('chatgpt');
-            const reply = 'ChatGPT has been opened in visible Google Chrome, Sir.';
-            addAssistantMessage(reply);
-            await voice.speak(reply);
-            setIsThinking(false);
-            return;
-          }
+          addAssistantMessage(`YouTube par "${ytQuery}" सर्च करके वीडियो प्ले कर रहा हूँ, Sir...`);
+          await voice.speak(`Searching and playing ${ytQuery} on YouTube, Sir.`);
+
+          const res = await window.electronAPI.playYouTube(ytQuery);
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
+          setIsThinking(false);
+          return;
         }
 
-        // 2. VISIBLE BROWSER AUTOMATION: GEMINI
-        // Matches: "open gemini", "gemini kholo", "ask gemini [question]", "gemini se poocho [question]"
-        if (lower.includes('gemini') && !lower.includes('api key')) {
-          if (
-            lower.startsWith('ask gemini') ||
-            lower.includes('se poocho') ||
-            lower.includes('se pucho') ||
-            lower.includes('par poocho') ||
-            (lower.includes('gemini') && (lower.includes('about') || lower.includes('what is') || lower.includes('tell me') || lower.includes('kya hai')))
-          ) {
-            let question = text
-              .replace(/^(hey jarvis|jarvis|stonic)?\s*(ask\s+gemini)\s*(about|to|for|:)?\s*/i, '')
-              .replace(/^(gemini\s*se\s*poocho|gemini\s*se\s*pucho|gemini\s*par\s*search\s*karo)\s*/i, '')
-              .trim();
-
-            if (!question) question = text;
-
-            addAssistantMessage(`Opening visible Chrome and submitting prompt to Google Gemini: "${question}"...`);
-            await voice.speak('Asking Gemini now, Sir...');
-
-            const res = await window.electronAPI.askGemini(question);
-            if (res.success && res.answer) {
-              addAssistantMessage(`### Google Gemini Response:\n\n${res.answer}`);
-              await voice.speak(res.answer);
-            } else {
-              addAssistantMessage(res.message);
-              await voice.speak(res.message);
-            }
-            setIsThinking(false);
-            return;
-          }
-
-          if (lower.includes('open') || lower.includes('kholo') || lower.includes('launch') || lower.includes('chalu')) {
-            await window.electronAPI.visibleBrowserOpen('gemini');
-            const reply = 'Google Gemini has been opened in visible Google Chrome, Sir.';
-            addAssistantMessage(reply);
-            await voice.speak(reply);
-            setIsThinking(false);
-            return;
-          }
+        // YouTube Pause / Resume
+        if (lower.includes('youtube') && (lower.includes('pause') || lower.includes('roko') || lower.includes('rok do'))) {
+          const res = await window.electronAPI.visibleBrowserControlYouTube('pause');
+          addAssistantMessage(res.message);
+          await voice.speak('YouTube video paused, Sir.');
+          setIsThinking(false);
+          return;
+        }
+        if (lower.includes('youtube') && (lower.includes('resume') || lower.includes('resume video') || (lower.includes('chalao') && lower.includes('video')))) {
+          const res = await window.electronAPI.visibleBrowserControlYouTube('resume');
+          addAssistantMessage(res.message);
+          await voice.speak('YouTube video resumed, Sir.');
+          setIsThinking(false);
+          return;
         }
 
-        // 3. VISIBLE YOUTUBE AUTOMATION (Play, Pause, Resume, Stop)
-        if (lower.includes('youtube')) {
-          if (lower.includes('pause') || lower.includes('roko') || lower.includes('rok do')) {
-            const res = await window.electronAPI.visibleBrowserControlYouTube('pause');
-            addAssistantMessage(res.message);
-            await voice.speak('YouTube video paused, Sir.');
-            setIsThinking(false);
-            return;
-          }
-          if (lower.includes('resume') || lower.includes('resume video') || (lower.includes('chalao') && lower.includes('video'))) {
-            const res = await window.electronAPI.visibleBrowserControlYouTube('resume');
-            addAssistantMessage(res.message);
-            await voice.speak('YouTube video resumed, Sir.');
-            setIsThinking(false);
-            return;
-          }
-          if (lower.includes('search') || lower.includes('play') || lower.includes('gaana') || lower.includes('song')) {
-            let ytQuery = text
-              .replace(/^(search\s+youtube\s+for|search\s+on\s+youtube\s+for|play\s+on\s+youtube|play\s+youtube|play\s+song|play)\s*/i, '')
-              .replace(/\s+(and\s+play\s+it|on\s+youtube|youtube\s+pe|youtube\s+par)$/i, '')
-              .replace(/^(youtube\s+pe|youtube\s+par|youtube\s+me)\s*/i, '')
-              .replace(/\s+(chalao|play\s+karo|lagao|sunao|bajao)$/i, '')
-              .trim();
+        // ========================================================
+        // 2. COMPOUND COMMAND: OPEN <APP> AND SEARCH/ASK <QUERY>
+        // Matches:
+        // - "open google chrome and search team india ka next match kab hai"
+        // - "open chatgpt and search team india ka next match kab hai"
+        // - "open gemini and search team india ka next match kab hai"
+        // - "google chrome open karo and search karo team india ka next match kab hai"
+        // - "chatgpt me search karo team india ka next match kab hai"
+        // - "open brave and search ai tools"
+        // - "ask chatgpt how does quantum computing work"
+        // ========================================================
+        let compoundMatch: { app: string; query: string } | null = null;
 
-            if (!ytQuery) ytQuery = 'trending songs';
+        // Pattern 1: open [app] and search/ask [query]
+        const m1 = text.match(/^(?:hey jarvis|jarvis|stonic)?\s*(?:open|launch|start)\s+(.+?)\s+(?:and|aur|phir)\s+(?:search|ask|poocho|pucho|dhoondho|play)\s+(?:for\s+|about\s+|ki\s+|in\s+)?(.+)$/i);
+        if (m1) compoundMatch = { app: m1[1].trim(), query: m1[2].trim() };
 
-            addAssistantMessage(`Opening YouTube in visible Chrome and playing "${ytQuery}"...`);
-            await voice.speak(`Searching and playing ${ytQuery} on YouTube, Sir.`);
-
-            const res = await window.electronAPI.visibleBrowserPlayYouTube(ytQuery);
-            const reply = res.success ? `Now playing "${res.title}" on YouTube!` : `YouTube opened for ${ytQuery}.`;
-            addAssistantMessage(reply);
-            setIsThinking(false);
-            return;
-          }
-
-          if (lower.includes('open') || lower.includes('kholo') || lower.includes('launch')) {
-            await window.electronAPI.visibleBrowserOpen('youtube');
-            const reply = 'YouTube opened in visible Chrome, Sir.';
-            addAssistantMessage(reply);
-            await voice.speak(reply);
-            setIsThinking(false);
-            return;
-          }
+        // Pattern 2: [app] open karo/kholo and search/ask [query]
+        if (!compoundMatch) {
+          const m2 = text.match(/^(.+?)\s+(?:open\s+karo|kholo|chalu\s+karo)\s+(?:and|aur|phir)\s+(?:usme\s+)?(?:search\s+karo|search|poocho|pucho|play\s+karo|chalao)\s+(?:ki\s+)?(.+)$/i);
+          if (m2) compoundMatch = { app: m2[1].trim(), query: m2[2].trim() };
         }
 
-        // 4. VISIBLE GOOGLE SEARCH AUTOMATION
+        // Pattern 3: [app] me/pe/par search/poocho [query]
+        if (!compoundMatch) {
+          const m3 = text.match(/^(.+?)\s+(?:me|pe|par)\s+(?:search\s+karo|search|dhoondho|poocho|pucho)\s+(?:ki\s+)?(.+)$/i);
+          if (m3) compoundMatch = { app: m3[1].trim(), query: m3[2].trim() };
+        }
+
+        // Pattern 4: ask [app] [query]
+        if (!compoundMatch) {
+          const m4 = text.match(/^(?:hey jarvis|jarvis|stonic)?\s*(?:ask)\s+(chatgpt|chat\s*gpt|gemini|claude|google|chrome|ai)\s+(?:about\s+|to\s+|for\s+|ki\s+)?(.+)$/i);
+          if (m4) compoundMatch = { app: m4[1].trim(), query: m4[2].trim() };
+        }
+
+        if (compoundMatch && compoundMatch.app && compoundMatch.query) {
+          const targetApp = compoundMatch.app;
+          const targetQuery = compoundMatch.query.replace(/\s+(search\s*karo|dhoondho|batao|poocho|pucho)$/i, '').trim();
+
+          addAssistantMessage(`Desktop se "${targetApp}" open karke "${targetQuery}" search kar raha hoon, Sir...`);
+          await voice.speak(`Opening ${targetApp} and searching ${targetQuery}, Sir.`);
+
+          const res = await window.electronAPI.openDesktopAppAndSearch(targetApp, targetQuery);
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
+          setIsThinking(false);
+          return;
+        }
+
+        // ========================================================
+        // 3. STANDALONE GOOGLE SEARCH
+        // Matches: "search google for [query]", "google par search karo [query]"
+        // ========================================================
         if (
           lower.startsWith('search google') ||
           lower.startsWith('search on google') ||
           (lower.includes('google') && (lower.includes('search') || lower.includes('dhoondho')))
         ) {
           const gQuery = text
-            .replace(/^(search\s+google\s+for|search\s+on\s+google\s+for|search\s+google|search|google\s*search)\s*/i, '')
+            .replace(/^(hey jarvis|jarvis|stonic)?\s*(search\s+google\s+for|search\s+on\s+google\s+for|search\s+google|search|google\s*search)\s*/i, '')
             .replace(/^(google\s*(?:pe|par|me)?\s*)/i, '')
             .replace(/\s+(search\s*karo|dhoondho|karo|batao)$/i, '')
             .trim();
 
-          addAssistantMessage(`Searching Google in visible Chrome for: "${gQuery || 'AI news'}"...`);
-          await voice.speak(`Searching Google for ${gQuery || 'AI news'}, Sir.`);
+          const queryToSearch = gQuery || 'latest news';
+          addAssistantMessage(`Google Chrome open karke "${queryToSearch}" search kar raha hoon, Sir...`);
+          await voice.speak(`Searching Google for ${queryToSearch}, Sir.`);
 
-          const res = await window.electronAPI.visibleBrowserSearchGoogle(gQuery || 'AI news');
-          addAssistantMessage(res.summary);
-          await voice.speak(res.summary);
-          setIsThinking(false);
-          return;
-        }
-
-        if (lower === 'open google' || lower === 'google kholo' || lower === 'open google in chrome') {
-          await window.electronAPI.visibleBrowserOpen('google');
-          const reply = 'Google homepage opened in Chrome, Sir.';
-          addAssistantMessage(reply);
-          await voice.speak(reply);
+          const res = await window.electronAPI.openDesktopAppAndSearch('Google Chrome', queryToSearch);
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
           setIsThinking(false);
           return;
         }

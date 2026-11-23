@@ -13,6 +13,8 @@ export const API = {
   getDesktopApps: (forceRefresh?: boolean) => ipcRenderer.invoke('system:getDesktopApps', forceRefresh),
   getInstalledApps: (forceRefresh?: boolean) => ipcRenderer.invoke('system:getInstalledApps', forceRefresh),
   openApp: (appName: string) => ipcRenderer.invoke('system:openApp', appName),
+  openDesktopAppAndSearch: (appName: string, query: string) =>
+    ipcRenderer.invoke('system:openDesktopAppAndSearch', appName, query),
   playYouTube: (query: string) => ipcRenderer.invoke('system:playYouTube', query),
   sendWhatsApp: (target: string, message: string) => ipcRenderer.invoke('system:sendWhatsApp', target, message),
   searchGoogle: (query: string) => ipcRenderer.invoke('system:searchGoogle', query),

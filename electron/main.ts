@@ -194,6 +194,7 @@ function setupIpc() {
   ipcMain.handle('system:getDesktopApps', (_, force) => systemService.getDesktopApps(force));
   ipcMain.handle('system:getInstalledApps', (_, force) => systemService.getInstalledApps(force));
   ipcMain.handle('system:openApp', (_, appName: string) => systemService.openApp(appName));
+  ipcMain.handle('system:openDesktopAppAndSearch', (_, appName: string, query: string) => systemService.openDesktopAppAndSearch(appName, query));
   ipcMain.handle('system:playYouTube', (_, query: string) => systemService.playYouTubeVideo(query));
   ipcMain.handle('system:sendWhatsApp', (_, target: string, message: string) => systemService.sendWhatsAppMessage(target, message));
   ipcMain.handle('system:searchGoogle', (_, query: string) => systemService.searchGoogle(query));
