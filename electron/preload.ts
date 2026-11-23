@@ -15,6 +15,7 @@ export const API = {
   openApp: (appName: string) => ipcRenderer.invoke('system:openApp', appName),
   openDesktopAppAndSearch: (appName: string, query: string) =>
     ipcRenderer.invoke('system:openDesktopAppAndSearch', appName, query),
+  installSoftware: (appName: string) => ipcRenderer.invoke('system:installSoftware', appName),
   playYouTube: (query: string) => ipcRenderer.invoke('system:playYouTube', query),
   sendWhatsApp: (target: string, message: string) => ipcRenderer.invoke('system:sendWhatsApp', target, message),
   searchGoogle: (query: string) => ipcRenderer.invoke('system:searchGoogle', query),

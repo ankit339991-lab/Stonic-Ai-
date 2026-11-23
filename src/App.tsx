@@ -114,6 +114,50 @@ export const App: React.FC = () => {
         }
 
         // ========================================================
+        // 0. SOFTWARE INSTALLATION & CHROME DOWNLOAD AUTOMATION
+        // Matches: "open google chrome and search vs code install and write website and install vs code in windows 64 arm",
+        // "install vs code", "vs code install karo", "install vlc", "download and install python"
+        // ========================================================
+        const isInstallIntent =
+          lower.includes('install') ||
+          lower.includes('इंस्टॉल') ||
+          (lower.includes('download') && (lower.includes('karo') || lower.includes('setup')));
+
+        if (isInstallIntent) {
+          let softwareTarget = text
+            .replace(/^(hey jarvis|jarvis|stonic)?\s*/i, '')
+            .replace(/^(open\s+google\s+chrome\s+(?:and|aur)\s+search\s+)/i, '')
+            .replace(/(?:and\s+write\s+website\s+and\s+install\s+)/i, '')
+            .replace(/^(install|download\s+aur\s+install|download\s+and\s+install|download\s+karo\s+aur\s+install\s+karo)\s+/i, '')
+            .replace(/\s+(install\s*karo|download\s*karo|karo|in\s+windows(?:\s+64(?:\s+arm)?)?|in\s+arm(?:\s*64)?)$/i, '')
+            .trim();
+
+          // Normalize common targets
+          if (softwareTarget.toLowerCase().includes('vs code') || softwareTarget.toLowerCase().includes('vscode')) {
+            softwareTarget = 'VS Code';
+          } else if (softwareTarget.toLowerCase().includes('chrome')) {
+            softwareTarget = 'Google Chrome';
+          } else if (softwareTarget.toLowerCase().includes('vlc')) {
+            softwareTarget = 'VLC';
+          } else if (softwareTarget.toLowerCase().includes('python')) {
+            softwareTarget = 'Python';
+          } else if (softwareTarget.toLowerCase().includes('node')) {
+            softwareTarget = 'Node.js';
+          } else if (softwareTarget.toLowerCase().includes('git')) {
+            softwareTarget = 'Git';
+          }
+
+          addAssistantMessage(`Google Chrome me official website open kar raha hoon aur "${softwareTarget}" ka verified installer launch kar raha hoon, Sir...`);
+          await voice.speak(`Opening official website in Chrome and launching installer for ${softwareTarget}, Sir.`);
+
+          const res = await window.electronAPI.installSoftware(softwareTarget);
+          addAssistantMessage(res.message);
+          await voice.speak(res.message);
+          setIsThinking(false);
+          return;
+        }
+
+        // ========================================================
         // 1. YOUTUBE PLAY & VIDEO SEARCH AUTOMATION
         // Matches: "open youtube and play song", "open youtube and play kesariya",
         // "youtube par video search karke play bhi kare", "play kesariya on youtube"

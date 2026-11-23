@@ -558,7 +558,7 @@ export class SystemService {
         await shell.openExternal(gptUrl);
       }
 
-      this.runFocusAndType('ChatGPT', 'paste_enter').catch(() => {});
+      this.runFocusAndType('ChatGPT', 'paste_enter').catch(() => { });
 
       return {
         success: true,
@@ -587,7 +587,7 @@ export class SystemService {
         await shell.openExternal('https://gemini.google.com/app');
       }
 
-      this.runFocusAndType('Gemini', 'paste_enter').catch(() => {});
+      this.runFocusAndType('Gemini', 'paste_enter').catch(() => { });
 
       return {
         success: true,
@@ -616,7 +616,7 @@ export class SystemService {
         await shell.openExternal('https://claude.ai');
       }
 
-      this.runFocusAndType('Claude', 'paste_enter').catch(() => {});
+      this.runFocusAndType('Claude', 'paste_enter').catch(() => { });
 
       return {
         success: true,
@@ -648,7 +648,7 @@ export class SystemService {
       await execAsync(`powershell -NoProfile -Command "Start-Process '${matched.path.replace(/'/g, "''")}'"`);
     }
 
-    this.runFocusAndType(matched.name, 'paste_enter').catch(() => {});
+    this.runFocusAndType(matched.name, 'paste_enter').catch(() => { });
 
     return {
       success: true,
@@ -738,6 +738,79 @@ export class SystemService {
         success: true,
         message: `यूट्यूब पर "${cleanQuery}" सर्च कर दिया है, सर!`,
         url: fallbackUrl,
+      };
+    }
+  }
+
+  /**
+   * Install software using official Windows Package Manager (winget) and open official website in Chrome
+   */
+  async installSoftware(appName: string): Promise<{ success: boolean; message: string; openedUrl?: string }> {
+    const clean = appName.toLowerCase().trim()
+      .replace(/^(open\s+google\s+chrome\s+(?:and|aur)\s+search\s+)/i, '')
+      .replace(/^(install|download\s+aur\s+install|download\s+and\s+install|get)\s+/i, '')
+      .replace(/\s+(install|karo|please|in\s+windows(?:\s+64(?:\s+arm)?)?)$/i, '')
+      .trim();
+
+    // Map common software names to winget IDs and official download pages
+    const catalog: { [key: string]: { id: string; name: string; url: string } } = {
+      'vscode': { id: 'Microsoft.VisualStudioCode', name: 'Visual Studio Code', url: 'https://code.visualstudio.com/Download' },
+      'vs code': { id: 'Microsoft.VisualStudioCode', name: 'Visual Studio Code', url: 'https://code.visualstudio.com/Download' },
+      'visual studio code': { id: 'Microsoft.VisualStudioCode', name: 'Visual Studio Code', url: 'https://code.visualstudio.com/Download' },
+      'chrome': { id: 'Google.Chrome', name: 'Google Chrome', url: 'https://www.google.com/chrome/' },
+      'google chrome': { id: 'Google.Chrome', name: 'Google Chrome', url: 'https://www.google.com/chrome/' },
+      'vlc': { id: 'VideoLAN.VLC', name: 'VLC Media Player', url: 'https://www.videolan.org/vlc/' },
+      'vlc media player': { id: 'VideoLAN.VLC', name: 'VLC Media Player', url: 'https://www.videolan.org/vlc/' },
+      'git': { id: 'Git.Git', name: 'Git for Windows', url: 'https://git-scm.com/download/win' },
+      'nodejs': { id: 'OpenJS.NodeJS', name: 'Node.js', url: 'https://nodejs.org/en/download/' },
+      'node': { id: 'OpenJS.NodeJS', name: 'Node.js', url: 'https://nodejs.org/en/download/' },
+      'python': { id: 'Python.Python.3.12', name: 'Python', url: 'https://www.python.org/downloads/' },
+      'brave': { id: 'Brave.Brave', name: 'Brave Browser', url: 'https://brave.com/download/' },
+      'whatsapp': { id: 'WhatsApp.WhatsApp', name: 'WhatsApp', url: 'https://www.whatsapp.com/download' },
+      'telegram': { id: 'Telegram.TelegramDesktop', name: 'Telegram', url: 'https://desktop.telegram.org/' },
+      '7zip': { id: '7zip.7zip', name: '7-Zip', url: 'https://www.7-zip.org/download.html' },
+      'discord': { id: 'Discord.Discord', name: 'Discord', url: 'https://discord.com/download' },
+      'zoom': { id: 'Zoom.Zoom', name: 'Zoom', url: 'https://zoom.us/download' },
+      'spotify': { id: 'Spotify.Spotify', name: 'Spotify', url: 'https://www.spotify.com/download/' },
+    };
+
+    let target = catalog[clean];
+    if (!target) {
+      const key = Object.keys(catalog).find((k) => clean.includes(k) || k.includes(clean));
+      if (key) target = catalog[key];
+    }
+
+    const downloadPage = target
+      ? target.url
+      : `https://www.google.com/search?q=${encodeURIComponent(appName + ' download for windows')}`;
+
+    try {
+      await execAsync(`start chrome "${downloadPage}"`);
+    } catch {
+      await shell.openExternal(downloadPage);
+    }
+
+    if (target) {
+      const wingetCmd = `powershell -NoProfile -Command "Start-Process winget -ArgumentList 'install --id ${target.id} -e --accept-package-agreements --accept-source-agreements' -Verb RunAs"`;
+      try {
+        await execAsync(wingetCmd);
+        return {
+          success: true,
+          message: `Official website (${downloadPage}) Chrome me open kar di hai aur '${target.name}' ka official installer start kar diya hai! Windows UAC pop-up aane par 'Yes' click karein.`,
+          openedUrl: downloadPage,
+        };
+      } catch (err: any) {
+        return {
+          success: true,
+          message: `Official download page (${downloadPage}) Chrome me open kar diya hai, sir!`,
+          openedUrl: downloadPage,
+        };
+      }
+    } else {
+      return {
+        success: true,
+        message: `'${appName}' ka official download page Chrome me search karke open kar diya hai, sir!`,
+        openedUrl: downloadPage,
       };
     }
   }
